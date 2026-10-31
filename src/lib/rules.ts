@@ -1,5 +1,6 @@
 // Rule-based stylist. Works fully offline — no AI needed.
-// It builds outfits from templates (top+bottom+shoes, or dress+shoes, plus layers when cold),
+// It builds outfits as one top + bottom + shoes (or dress + shoes), a jacket or coat when the weather
+// needs it, a second top layer only below 8°, and a watch plus at most one accessory that suits the day,
 // then scores them on weather fit, occasion, colour harmony, pattern mixing, formality and rotation.
 
 import { colorName, hexToHsl, isNeutral, pairScore } from "./colors";
@@ -118,8 +119,25 @@ function buildPools(items: Item[], ctx: StyleContext): Pools {
     const f = itemFit(i, ctx, role);
     if (!locked && f.s === -Infinity) continue;
     (pools[role] ||= []).push({ item: i, fit: locked ? 5 : f.s, why: f.why });
+    // "upper": every top, sweaters included, judged as the one top of the look.
+    if (role === "mid") {
+      const u = itemFit(i, ctx, "top");
+      if (locked || u.s !== -Infinity) (pools.upper ||= []).push({ item: i, fit: locked ? 5 : u.s, why: u.why });
+    } else if (role === "top") (pools.upper ||= []).push({ item: i, fit: locked ? 5 : f.s, why: f.why });
   }
   return pools;
+}
+
+/** What kind of accessory a piece is, from its type or name. */
+type AccKind = "watch" | "belt" | "hat" | "warm" | "sun" | "other";
+function accKind(i: Item): AccKind {
+  const n = sub(i) + " " + i.name.toLowerCase();
+  if (/watch/.test(n)) return "watch";
+  if (/belt/.test(n)) return "belt";
+  if (/beanie|scarf|glove/.test(n)) return "warm";
+  if (/sunglass/.test(n)) return "sun";
+  if (/cap|hat/.test(n)) return "hat";
+  return "other";
 }
 
 function pick<T extends { fit: number }>(arr: T[] | undefined, r: () => number): T | undefined {
@@ -214,18 +232,36 @@ export function suggest(all: Item[], ctx: StyleContext, count = 4): Suggestion[]
     if (dressRoute) {
       const d = lockOr("dress"); if (!d) continue; parts.push(d);
     } else {
-      const top = lockOr("top") || lockOr("mid");
+      // One top. A sweater or sweatshirt can be that top; a second top layer only when it's properly cold.
+      const lockedTop = lockedRoles.get("top"), lockedMid = lockedRoles.get("mid");
+      const top = lockedTop ? { item: lockedTop, fit: 5 } : lockedMid ? { item: lockedMid, fit: 5 } : pick(pools.upper, r);
       const bottom = lockOr("bottom");
       if (!top || !bottom) continue;
       parts.push(top, bottom);
-      const wantMid = lockedRoles.has("mid") || (temp !== undefined && (temp < 12 || (temp < 17 && r() < 0.4)));
-      if (wantMid && roleOf(top.item) === "top") { const m = lockOr("mid"); if (m) parts.push(m); }
+      const cold = temp !== undefined && temp < 8;
+      if (roleOf(top.item) === "top" && (lockedMid || (cold && r() < 0.6))) { const m = lockOr("mid"); if (m) parts.push(m); }
     }
     const needOuter = lockedRoles.has("outer") || (temp !== undefined ? temp < 15 || !!ctx.wet || (temp < 19 && r() < 0.45) : r() < 0.25);
     if (needOuter) { const o = lockOr("outer"); if (o) parts.push(o); }
     const shoes = lockOr("shoes"); if (shoes) parts.push(shoes);
     if (lockedRoles.has("bag") || r() < 0.55) { const b = lockOr("bag"); if (b) parts.push(b); }
-    if (lockedRoles.has("accessory") || r() < 0.35) { const a = lockOr("accessory"); if (a) parts.push(a); }
+
+    // Accessories: a watch most days, plus at most one piece that suits the look or the weather.
+    const accs = pools.accessory || [];
+    const ofKind = (...k: AccKind[]) => accs.filter((a) => k.includes(accKind(a.item)));
+    const lockedAcc = locked.filter((i) => roleOf(i) === "accessory");
+    if (!lockedAcc.some((i) => accKind(i) === "watch") && r() < 0.9) { const w = pick(ofKind("watch"), r); if (w) parts.push(w); }
+    if (!lockedAcc.some((i) => accKind(i) !== "watch")) {
+      const smart = OCCASION_FORMALITY[ctx.occasion] >= 3;
+      const b = parts.find((p) => p.item.category === "bottom")?.item;
+      const tailored = !!b && !/drawstring|jogger|cargo|short|legging/.test(sub(b) + " " + b.name.toLowerCase());
+      let extra: AccKind[] = [];
+      if (temp !== undefined && temp < 10) extra = ["warm"];
+      else if (smart && tailored) extra = ["belt"];
+      else if (temp !== undefined && temp >= 20) extra = ["sun", "hat"];
+      else if (tailored) extra = ["belt"];
+      if (extra.length && r() < 0.5) { const e = pick(ofKind(...extra), r); if (e) parts.push(e); }
+    }
     // anything else locked (e.g. two accessories)
     for (const li of locked) if (!parts.some((p) => p.item.id === li.id)) parts.push({ item: li, fit: 5 });
 
