@@ -70,9 +70,9 @@ export default function ItemPage({ id }: { id?: string }) {
         <div>
           <div className="hero-img">
             <ItemImg item={stored} />
-            <span className="hand lg" style={{ position: "absolute", right: 8, bottom: 8, transform: "rotate(-5deg)" }}>{nums[draft.id]} {label(draft)}</span>
             {busy && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--paper) 60%, transparent)" }}><div className="row"><Spinner /> <span>{busy}</span></div></div>}
           </div>
+          <p className="hand lg" style={{ width: "fit-content", margin: "12px 8px 0 auto", transform: "rotate(-3deg)" }}>{nums[draft.id]} {label(draft)}</p>
           <div className="row" style={{ justifyContent: "center", marginTop: 12 }}>
             <button className="btn sm" disabled={!!busy || (!stored.imageId && !stored.originalImageId)} onClick={() => run("Cutting out…", async () => { await recut(stored, (m) => setBusy(m)); toast("Background removed"); })}><Scissors size={14} /> cut out</button>
             <button className="btn sm" disabled={!!busy} onClick={() => {

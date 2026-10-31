@@ -22,14 +22,14 @@ function Slot({ p, i }: { p: HeroPiece; i: number }) {
   const url = useItemImage(p.item);
   const src = p.src || url;
   const h = hashNum(p.key);
-  const rot = (h - 0.5) * 18;
-  const dx = (hashNum(p.key + "x") - 0.5) * 16;
+  const rot = (h - 0.5) * 10;
+  const dx = (hashNum(p.key + "x") - 0.5) * 12;
   const left = hashNum(p.key + "l") > 0.5;
   const Tag = p.href ? "a" : "div";
   return (
     <Tag className={`hero-slot p${i + 1}`} href={p.href} style={{ textDecoration: "none" }}>
       <div className="hero-img" style={{ transform: `translateX(${dx}px) rotate(${rot}deg)` }}>{src && <img src={src} alt={p.label} draggable={false} />}</div>
-      <span className="hand" style={{ [left ? "left" : "right"]: "6%", transform: `rotate(${(h - 0.5) * 10}deg)` } as React.CSSProperties}>{p.label}</span>
+      <span className="hand" style={{ alignSelf: left ? "flex-start" : "flex-end", transform: `rotate(${(h - 0.5) * 6}deg)` }}>{p.label}</span>
     </Tag>
   );
 }

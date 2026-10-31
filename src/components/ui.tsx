@@ -16,9 +16,9 @@ export const label = (it: Item) => (it.subcategory || it.category).toLowerCase()
 /** A cut-out piece floating on the page with a handwritten catalogue label. */
 export function Piece({ item, num, onClick, dim, href }: { item: Item; num?: string; onClick?: () => void; dim?: boolean; href?: string }) {
   const h = hashNum(item.id);
-  const rot = (h - 0.5) * 7;
-  const dy = (hashNum(item.id + "y") - 0.5) * 26;
-  const sc = 0.8 + hashNum(item.id + "s") * 0.22;
+  const rot = (h - 0.5) * 6;
+  const dy = (hashNum(item.id + "y") - 0.5) * 10;
+  const sc = 0.82 + hashNum(item.id + "s") * 0.16;
   const side = h > 0.5;
   const Tag = href ? "a" : "div";
   return (
@@ -26,7 +26,7 @@ export function Piece({ item, num, onClick, dim, href }: { item: Item; num?: str
       <div className="img-wrap" style={{ transform: `translateY(${dy}px) rotate(${rot}deg) scale(${sc})` }}>
         <ItemImg item={item} />
       </div>
-      <span className="hand" style={{ bottom: 2, [side ? "right" : "left"]: 8, transform: `rotate(${(hashNum(item.id + "l") - 0.5) * 8}deg)` } as React.CSSProperties}>
+      <span className="hand" style={{ alignSelf: side ? "flex-end" : "flex-start", transform: `rotate(${(hashNum(item.id + "l") - 0.5) * 6}deg)` }}>
         {num ? `${num} ` : ""}{label(item)}
       </span>
       {item.favorite && <Heart className="heart" size={15} fill="currentColor" />}

@@ -178,11 +178,11 @@ img { display: block; max-width: 100%; }
 }
 @media (min-width: 640px) { .floor { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (min-width: 1000px) { .floor { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 34px 26px; } }
-.piece { position: relative; display: block; text-decoration: none; padding: 10px 6px 28px; cursor: pointer; }
+.piece { position: relative; display: flex; flex-direction: column; text-decoration: none; padding: 10px 6px 8px; cursor: pointer; }
 .piece .img-wrap { aspect-ratio: 4 / 5; display: grid; place-items: center; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
 .piece:hover .img-wrap { transform: translateY(-4px) rotate(0deg) scale(1.03) !important; }
 .piece img, .cut { mix-blend-mode: var(--img-blend); object-fit: contain; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
-.piece .hand { position: absolute; }
+.piece .hand { position: static; margin: 12px 8px 0; }
 .piece .heart { position: absolute; top: 6px; left: 6px; color: var(--ink); }
 .piece.dim { opacity: .45; }
 .ph { width: 100%; height: 100%; display: grid; place-items: center; color: var(--muted); font-family: var(--hand); font-size: 22px; }
@@ -193,11 +193,11 @@ img { display: block; max-width: 100%; }
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-areas: "p1 p2 p3" "m m m" "p4 p5 p6";
 }
-.hero-slot { position: relative; display: grid; place-items: center; padding: 8px 4px 26px; min-width: 0; color: inherit; }
-.hero-slot .hero-img { width: 100%; height: 118px; display: grid; place-items: center; transition: transform .5s cubic-bezier(.2,.8,.2,1); }
-.hero-slot img { max-width: 92%; max-height: 100%; object-fit: contain; mix-blend-mode: var(--img-blend); }
+.hero-slot { position: relative; display: flex; flex-direction: column; align-items: center; padding: 8px 4px 6px; min-width: 0; color: inherit; }
+.hero-slot .hero-img { width: 100%; height: 118px; display: block; transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+.hero-slot img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: var(--img-blend); }
 a.hero-slot:hover .hero-img { transform: translateY(-4px) scale(1.04) !important; }
-.hero-slot .hand { position: absolute; bottom: 2px; font-size: 18px; max-width: 90%; overflow: hidden; text-overflow: ellipsis; }
+.hero-slot .hand { position: static; margin: 10px 6% 0; font-size: 18px; max-width: 90%; overflow: hidden; text-overflow: ellipsis; }
 .hero-slot.p1 { grid-area: p1; } .hero-slot.p2 { grid-area: p2; } .hero-slot.p3 { grid-area: p3; }
 .hero-slot.p4 { grid-area: p4; } .hero-slot.p5 { grid-area: p5; } .hero-slot.p6 { grid-area: p6; }
 .hero-slot.p7, .hero-slot.p8, .hero-slot.p9, .hero-slot.p10, .hero-slot.p11, .hero-slot.p12 { display: none; }
@@ -211,7 +211,7 @@ a.hero-slot:hover .hero-img { transform: translateY(-4px) scale(1.04) !important
     grid-template-areas: "p1 p2 p3 p4 p5" "p6 m m m p7" "p8 p9 p10 p11 p12";
   }
   .hero-slot .hero-img { height: 170px; }
-  .hero-slot.p7, .hero-slot.p8, .hero-slot.p9, .hero-slot.p10, .hero-slot.p11, .hero-slot.p12 { display: grid; }
+  .hero-slot.p7, .hero-slot.p8, .hero-slot.p9, .hero-slot.p10, .hero-slot.p11, .hero-slot.p12 { display: flex; }
   .hero-slot.p7 { grid-area: p7; } .hero-slot.p8 { grid-area: p8; } .hero-slot.p9 { grid-area: p9; }
   .hero-slot.p10 { grid-area: p10; } .hero-slot.p11 { grid-area: p11; } .hero-slot.p12 { grid-area: p12; }
   .hero-slot .hand { font-size: 20px; }
@@ -259,7 +259,7 @@ a.hero-slot:hover .hero-img { transform: translateY(-4px) scale(1.04) !important
 .split { display: grid; gap: 28px; }
 @media (min-width: 900px) { .split { grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: start; } }
 .hero-img { aspect-ratio: 1; display: grid; place-items: center; position: relative; }
-.hero-img img { max-height: 100%; object-fit: contain; mix-blend-mode: var(--img-blend); }
+.hero-img img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: var(--img-blend); }
 .facts { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .facts > div { padding: 14px 6px; text-align: center; }
 .facts > div + div { border-left: 1px solid var(--line); }
@@ -356,3 +356,5 @@ hr.rule { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
 .spin { animation: spin 1s linear infinite; }
 p.hand, .hand.lg { white-space: normal; }
 main { overflow-x: clip; }
+.hand { text-shadow: 0 0 3px var(--paper), 0 0 6px var(--paper); }
+.split > div > .hero-img { overflow: hidden; display: block; }
