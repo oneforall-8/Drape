@@ -1,6 +1,8 @@
 import { Plus, Settings as Gear, Sparkles } from "lucide-react";
 import { useEffect } from "react";
-import { load } from "./lib/db";
+import { SyncBadge } from "./components/SyncBadge";
+import { load, requestPersistence } from "./lib/db";
+import { startAutoSync } from "./lib/drive";
 import { useRoute, useStore, useToastHost } from "./lib/hooks";
 import AddPage from "./pages/Add";
 import Builder from "./pages/Builder";
@@ -28,7 +30,7 @@ export default function App() {
   const { parts, params } = useRoute();
   const toastMsg = useToastHost();
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load().then(() => { startAutoSync(); requestPersistence(); }); }, []);
   useEffect(() => {
     const el = document.documentElement;
     if (settings.theme === "system") el.removeAttribute("data-theme");
@@ -62,8 +64,10 @@ export default function App() {
         <nav className="topnav">
           {NAV.map((n) => <a key={n.to} href={"#" + n.to} className={isOn(n.to) ? "on" : ""}>{n.label}</a>)}
           <a href="#/add" className={isOn("/add") ? "on" : ""}>+ add</a>
+          <SyncBadge />
         </nav>
         <div className="top-actions mobile-only">
+          <SyncBadge />
           <a className="iconbtn" href="#/stylist" aria-label="Stylist"><Sparkles size={20} strokeWidth={1.5} /></a>
           <a className="iconbtn" href="#/insights" aria-label="Insights" style={{ fontFamily: "var(--hand)", fontSize: 20 }}>stats</a>
           <a className="iconbtn" href="#/settings" aria-label="Settings"><Gear size={20} strokeWidth={1.5} /></a>

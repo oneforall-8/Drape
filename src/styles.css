@@ -187,20 +187,39 @@ img { display: block; max-width: 100%; }
 .piece.dim { opacity: .45; }
 .ph { width: 100%; height: 100%; display: grid; place-items: center; color: var(--muted); font-family: var(--hand); font-size: 22px; }
 
-/* ---------- Hero ring (today) ---------- */
-.ring { position: relative; min-height: 600px; margin: 0 -16px; overflow: hidden; }
-@media (min-width: 900px) { .ring { min-height: 700px; margin: 0 -56px; } }
-.ring .float-item { position: absolute; transition: transform .6s cubic-bezier(.2,.8,.2,1); }
-.ring .float-item img { width: 100%; height: auto; max-height: 100%; mix-blend-mode: var(--img-blend); }
-.ring .float-item .hand { position: absolute; font-size: 19px; }
-.ring-center { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; text-align: center; padding: 0 20px; pointer-events: none; }
-.ring-center > div { pointer-events: auto; max-width: 640px; }
-@media (max-width: 899px) {
-  .ring { min-height: 0; }
-  .ring-center { position: relative; inset: auto; padding: 172px 16px 178px; }
+/* ---------- Hero (today): pieces in a grid around the headline, so nothing can overlap ---------- */
+.hero {
+  display: grid; gap: 4px 10px; align-items: center; padding: 6px 0 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas: "p1 p2 p3" "m m m" "p4 p5 p6";
 }
-.hero-cta { margin-top: 18px; width: 92px; height: 92px; }
-@media (min-width: 900px) { .ring-center { padding-top: 70px; } .ring-center .display { font-size: clamp(56px, 6.4vw, 88px); } .ring-center .lede { max-width: 30em; } .hero-cta { position: absolute; right: 56px; bottom: 34px; margin: 0; width: 110px; height: 110px; } }
+.hero-slot { position: relative; display: grid; place-items: center; padding: 8px 4px 26px; min-width: 0; color: inherit; }
+.hero-slot .hero-img { width: 100%; height: 118px; display: grid; place-items: center; transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+.hero-slot img { max-width: 92%; max-height: 100%; object-fit: contain; mix-blend-mode: var(--img-blend); }
+a.hero-slot:hover .hero-img { transform: translateY(-4px) scale(1.04) !important; }
+.hero-slot .hand { position: absolute; bottom: 2px; font-size: 18px; max-width: 90%; overflow: hidden; text-overflow: ellipsis; }
+.hero-slot.p1 { grid-area: p1; } .hero-slot.p2 { grid-area: p2; } .hero-slot.p3 { grid-area: p3; }
+.hero-slot.p4 { grid-area: p4; } .hero-slot.p5 { grid-area: p5; } .hero-slot.p6 { grid-area: p6; }
+.hero-slot.p7, .hero-slot.p8, .hero-slot.p9, .hero-slot.p10, .hero-slot.p11, .hero-slot.p12 { display: none; }
+.hero-text { grid-area: m; text-align: center; padding: 18px 0 22px; min-width: 0; }
+.hero-text .display { font-size: clamp(38px, 11vw, 64px); overflow-wrap: anywhere; text-wrap: balance; }
+.hero-cta { margin-top: 18px; width: 96px; height: 96px; }
+@media (min-width: 900px) {
+  .hero {
+    gap: 0 18px; padding: 10px 0 30px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-areas: "p1 p2 p3 p4 p5" "p6 m m m p7" "p8 p9 p10 p11 p12";
+  }
+  .hero-slot .hero-img { height: 170px; }
+  .hero-slot.p7, .hero-slot.p8, .hero-slot.p9, .hero-slot.p10, .hero-slot.p11, .hero-slot.p12 { display: grid; }
+  .hero-slot.p7 { grid-area: p7; } .hero-slot.p8 { grid-area: p8; } .hero-slot.p9 { grid-area: p9; }
+  .hero-slot.p10 { grid-area: p10; } .hero-slot.p11 { grid-area: p11; } .hero-slot.p12 { grid-area: p12; }
+  .hero-slot .hand { font-size: 20px; }
+  .hero-text { padding: 10px 0; }
+  .hero-text .display { font-size: clamp(44px, 5.4vw, 84px); }
+  .hero-text .lede { max-width: 30em; }
+}
+@media (prefers-reduced-motion: reduce) { .hero-slot .hero-img, .piece .img-wrap { transition: none; } }
 
 /* ---------- Outfit board ---------- */
 .board { position: relative; width: 100%; aspect-ratio: 4 / 5; touch-action: none; user-select: none; }
@@ -330,3 +349,10 @@ hr.rule { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
 .qcard .img-wrap { width: 100%; overflow: hidden; }
 .qcard .img-wrap img { max-width: 100%; }
 .msg.ai { width: 100%; }
+.sync-badge { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 2px 4px; cursor: pointer; color: var(--muted); white-space: nowrap; }
+.sync-badge .hand { font-size: 18px; color: inherit; }
+.sync-badge.warn { color: var(--ink); }
+.sync-badge.err { color: var(--danger); }
+.spin { animation: spin 1s linear infinite; }
+p.hand, .hand.lg { white-space: normal; }
+main { overflow-x: clip; }

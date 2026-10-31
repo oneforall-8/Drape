@@ -32,6 +32,20 @@ export interface State {
   settings: Settings;
 }
 
+// Called after any wardrobe data change (not settings) — used to trigger Drive sync.
+const changeListeners = new Set<() => void>();
+export const onDataChange = (fn: () => void) => { changeListeners.add(fn); return () => changeListeners.delete(fn); };
+const changed = () => changeListeners.forEach((f) => f());
+
+// Deleted record ids with the time of deletion, so a sync doesn't bring them back from another device.
+export interface Tombstones { items: Record<string, number>; outfits: Record<string, number>; days: Record<string, number> }
+let tomb: Tombstones = { items: {}, outfits: {}, days: {} };
+export const getTombstones = () => tomb;
+async function bury(kind: keyof Tombstones, id: string) {
+  tomb = { ...tomb, [kind]: { ...tomb[kind], [id]: Date.now() } };
+  await (await db()).put("kv", tomb, "tombstones");
+}
+
 let state: State = { ready: false, items: [], outfits: [], days: {}, settings: { ...DEFAULT_SETTINGS } };
 const listeners = new Set<() => void>();
 export const getState = () => state;
@@ -55,12 +69,14 @@ function guessCurrency() {
 
 export async function load() {
   const d = await db();
-  const [items, outfits, days, settings] = await Promise.all([
+  const [items, outfits, days, settings, tombs] = await Promise.all([
     d.getAll("items") as Promise<Item[]>,
     d.getAll("outfits") as Promise<Outfit[]>,
     d.getAll("days") as Promise<DayEntry[]>,
     d.get("kv", "settings") as Promise<Settings | undefined>,
+    d.get("kv", "tombstones") as Promise<Tombstones | undefined>,
   ]);
+  tomb = { items: {}, outfits: {}, days: {}, ...(tombs || {}) };
   const dayMap: Record<string, DayEntry> = {};
   days.forEach((x) => (dayMap[x.date] = x));
   items.sort((a, b) => b.createdAt - a.createdAt);
@@ -70,24 +86,29 @@ export async function load() {
     items,
     outfits,
     days: dayMap,
-    settings: { ...DEFAULT_SETTINGS, currency: guessCurrency(), ...(settings || {}) },
+    settings: { ...DEFAULT_SETTINGS, currency: guessCurrency(), ...(settings || {}), ...(settings && !(settings as { themeV2?: boolean }).themeV2 ? { theme: "light" as const } : {}) },
   });
 }
 
 // ---------- Items ----------
 export async function saveItem(item: Item) {
+  item = { ...item, updatedAt: Date.now() };
   const d = await db();
   await d.put("items", item);
   const exists = state.items.some((i) => i.id === item.id);
   set({ items: exists ? state.items.map((i) => (i.id === item.id ? item : i)) : [item, ...state.items] });
+  changed();
 }
 export async function saveItems(items: Item[]) {
+  const now = Date.now();
+  items = items.map((i) => ({ ...i, updatedAt: now }));
   const d = await db();
   const tx = d.transaction("items", "readwrite");
   await Promise.all(items.map((i) => tx.store.put(i)));
   await tx.done;
   const ids = new Set(items.map((i) => i.id));
   set({ items: [...items, ...state.items.filter((i) => !ids.has(i.id))].sort((a, b) => b.createdAt - a.createdAt) });
+  changed();
 }
 export async function deleteItem(id: string) {
   const d = await db();
@@ -99,43 +120,86 @@ export async function deleteItem(id: string) {
   const outfits: Outfit[] = [];
   for (const o of state.outfits) {
     if (!o.itemIds.includes(id)) { outfits.push(o); continue; }
-    const next = { ...o, itemIds: o.itemIds.filter((x) => x !== id), layout: o.layout?.filter((s) => s.itemId !== id) };
-    if (next.itemIds.length === 0) await d.delete("outfits", o.id);
+    const next = { ...o, itemIds: o.itemIds.filter((x) => x !== id), layout: o.layout?.filter((s) => s.itemId !== id), updatedAt: Date.now() };
+    if (next.itemIds.length === 0) { await d.delete("outfits", o.id); await bury("outfits", o.id); }
     else { await d.put("outfits", next); outfits.push(next); }
   }
+  await bury("items", id);
   set({ items: state.items.filter((i) => i.id !== id), outfits });
+  changed();
 }
 
 // ---------- Outfits ----------
 export async function saveOutfit(o: Outfit) {
+  o = { ...o, updatedAt: Date.now() };
   const d = await db();
   await d.put("outfits", o);
   const exists = state.outfits.some((x) => x.id === o.id);
   set({ outfits: exists ? state.outfits.map((x) => (x.id === o.id ? o : x)) : [o, ...state.outfits] });
+  changed();
 }
 export async function deleteOutfit(id: string) {
   const d = await db();
   await d.delete("outfits", id);
+  await bury("outfits", id);
   set({ outfits: state.outfits.filter((o) => o.id !== id) });
+  changed();
 }
 
 // ---------- Calendar ----------
 export async function saveDay(e: DayEntry) {
+  e = { ...e, updatedAt: Date.now() };
   const d = await db();
   await d.put("days", e);
   set({ days: { ...state.days, [e.date]: e } });
+  changed();
 }
 export async function deleteDay(date: string) {
   const d = await db();
   await d.delete("days", date);
+  await bury("days", date);
   const days = { ...state.days };
   delete days[date];
   set({ days });
+  changed();
+}
+
+/** Replace local data with the result of a sync merge (no change notification, to avoid a loop). */
+export async function replaceData(data: { items: Item[]; outfits: Outfit[]; days: DayEntry[]; tombstones: Tombstones }) {
+  const d = await db();
+  // Photos of pieces deleted on another device can go too.
+  const keep = new Set(data.items.map((i) => i.id));
+  const gone = state.items.filter((i) => !keep.has(i.id)).flatMap((i) => [i.imageId, i.originalImageId]).filter(Boolean) as string[];
+  for (const id of gone) await d.delete("images", id);
+  const tx = d.transaction(["items", "outfits", "days", "kv"], "readwrite");
+  await Promise.all([tx.objectStore("items").clear(), tx.objectStore("outfits").clear(), tx.objectStore("days").clear()]);
+  for (const i of data.items) tx.objectStore("items").put(i);
+  for (const o of data.outfits) tx.objectStore("outfits").put(o);
+  for (const x of data.days) tx.objectStore("days").put(x);
+  tx.objectStore("kv").put(data.tombstones, "tombstones");
+  await tx.done;
+  tomb = data.tombstones;
+  const dayMap: Record<string, DayEntry> = {};
+  data.days.forEach((x) => (dayMap[x.date] = x));
+  set({
+    items: [...data.items].sort((a, b) => b.createdAt - a.createdAt),
+    outfits: [...data.outfits].sort((a, b) => b.createdAt - a.createdAt),
+    days: dayMap,
+  });
+}
+
+export async function hasImage(id: string) {
+  return (await (await db()).getKey("images", id)) !== undefined;
+}
+
+/** Ask the browser not to clear this site's storage when space is low. */
+export async function requestPersistence() {
+  try { if (navigator.storage?.persist && !(await navigator.storage.persisted())) await navigator.storage.persist(); } catch { /* ignore */ }
 }
 
 // ---------- Settings ----------
 export async function saveSettings(patch: Partial<Settings>) {
-  const settings = { ...state.settings, ...patch };
+  const settings = { ...state.settings, ...patch, themeV2: true } as Settings;
   const d = await db();
   await d.put("kv", settings, "settings");
   set({ settings });
@@ -202,10 +266,17 @@ export async function importBackup(file: File) {
   await tx.done;
   if (data.settings) await d.put("kv", { ...state.settings, ...data.settings, apiKey: state.settings.apiKey }, "settings");
   await load();
+  changed();
 }
 
 export async function wipeAll() {
   const d = await db();
+  // Record deletions so a connected Drive doesn't restore them.
+  for (const i of state.items) tomb.items[i.id] = Date.now();
+  for (const o of state.outfits) tomb.outfits[o.id] = Date.now();
+  for (const k of Object.keys(state.days)) tomb.days[k] = Date.now();
+  await d.put("kv", tomb, "tombstones");
   for (const s of ["items", "outfits", "days", "images"]) await d.clear(s);
   await load();
+  changed();
 }

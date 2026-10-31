@@ -1,49 +1,13 @@
 import { Bookmark, Check, CloudRain, Shuffle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Hero } from "../components/Hero";
 import { OutfitBoard, label } from "../components/ui";
 import { saveDay, saveOutfit, uid } from "../lib/db";
-import { go, todayKey, toast, useItemImage, useNumbers, useStore, useWear, useWeather } from "../lib/hooks";
+import { go, todayKey, toast, useNumbers, useStore, useWear, useWeather } from "../lib/hooks";
 import { suggest, seasonFor, type Suggestion } from "../lib/rules";
 import { loadSampleWardrobe, sampleSvg } from "../lib/sample";
-import { OCCASIONS, OCCASION_LABEL, type Item, type Occasion } from "../lib/types";
+import { OCCASIONS, OCCASION_LABEL, type Occasion } from "../lib/types";
 import { describe, fmtTemp, isWet } from "../lib/weather";
-
-// Positions (percent of the hero) for the ring of pieces around the headline.
-const DESK = [
-  { l: 13, t: 4, w: 13, lab: [70, -4] }, { l: 31, t: 1, w: 8, lab: [70, 92] }, { l: 47, t: 0, w: 10, lab: [96, 70] },
-  { l: 67, t: 5, w: 13, lab: [70, 4] }, { l: 84, t: 38, w: 10, lab: [-20, 100] }, { l: 66, t: 66, w: 12, lab: [-30, 96] },
-  { l: 44, t: 70, w: 12, lab: [-24, 6] }, { l: 19, t: 64, w: 13, lab: [70, 96] }, { l: 4, t: 33, w: 10, lab: [60, 100] }, { l: 88, t: 72, w: 8, lab: [-10, 104] },
-];
-// Phone: a row of pieces above the headline and a row below it (top/bottom in px, so text never overlaps).
-const MOB = [
-  { l: 3, t: 6, w: 30, lab: [56, 96] }, { l: 37, t: 0, w: 25, lab: [60, 92] }, { l: 67, t: 10, w: 30, lab: [6, 100] },
-  { l: 1, b: 26, w: 30, lab: [56, -2] }, { l: 36, b: 6, w: 26, lab: [60, -4] }, { l: 67, b: 30, w: 30, lab: [0, -2] },
-];
-type Pos = { l: number; t?: number; b?: number; w: number; lab: number[] };
-const place = (p: Pos, desk: boolean): React.CSSProperties =>
-  desk ? { left: `${p.l}%`, top: `${p.t}%`, width: `${p.w}%` } : { left: `${p.l}%`, width: `${p.w}%`, ...(p.b !== undefined ? { bottom: p.b } : { top: p.t }) };
-
-function useDesktop() {
-  const [d, setD] = useState(() => window.matchMedia("(min-width: 900px)").matches);
-  useEffect(() => {
-    const m = window.matchMedia("(min-width: 900px)");
-    const on = () => setD(m.matches);
-    m.addEventListener("change", on);
-    return () => m.removeEventListener("change", on);
-  }, []);
-  return d;
-}
-
-function RingItem({ item, pos, n, i, desk }: { item: Item; pos: Pos; n?: string; i: number; desk: boolean }) {
-  const url = useItemImage(item);
-  const rot = ((i * 37) % 21) - 10;
-  return (
-    <a href={`#/item/${item.id}`} className="float-item" style={{ ...place(pos, desk), transform: `rotate(${rot}deg)` }}>
-      {url && <img src={url} alt={item.name} draggable={false} />}
-      <span className="hand" style={{ left: `${pos.lab[0]}%`, top: `${pos.lab[1]}%`, transform: `rotate(${-rot - 4}deg)` }}>{n ? parseInt(n) + " " : ""}{label(item)}</span>
-    </a>
-  );
-}
 
 function greeting() {
   const h = new Date().getHours();
@@ -54,7 +18,6 @@ export default function Today() {
   const { items, settings, days } = useStore();
   const owned = useMemo(() => items.filter((i) => i.status === "owned"), [items]);
   const nums = useNumbers();
-  const desk = useDesktop();
   const { wx, loc } = useWeather();
   const { last } = useWear();
   const [occasion, setOccasion] = useState<Occasion>(() => (new Date().getDay() % 6 === 0 ? "casual" : "work"));
@@ -63,12 +26,15 @@ export default function Today() {
   const [locks, setLocks] = useState<Record<number, string[]>>({});
   const looksRef = useRef<HTMLDivElement>(null);
 
-  // Pick a changing selection of pieces for the hero ring.
+  // A changing selection of pieces for the hero, mixing categories so it reads like a flat-lay.
   const ring = useMemo(() => {
-    const pos: Pos[] = desk ? DESK.slice(0, 9) : MOB;
-    const pool = [...owned].sort((a, b) => ((a.id.charCodeAt(1) * seed) % 97) - ((b.id.charCodeAt(1) * seed) % 97));
-    return pool.slice(0, pos.length).map((it, i) => ({ it, pos: pos[i] }));
-  }, [owned, desk, seed]);
+    const shuffled = [...owned].sort((a, b) => ((a.id.charCodeAt(1) * seed) % 97) - ((b.id.charCodeAt(1) * seed) % 97));
+    const byCat = new Map<string, typeof owned>();
+    shuffled.forEach((it) => byCat.set(it.category, [...(byCat.get(it.category) || []), it]));
+    const out: typeof owned = [];
+    while (out.length < 12 && [...byCat.values()].some((l) => l.length)) for (const l of byCat.values()) { const it = l.shift(); if (it && out.length < 12) out.push(it); }
+    return out;
+  }, [owned, seed]);
 
   const ctx = useMemo(() => ({
     temp: wx ? (wx.daily[0] ? (wx.daily[0].max * 2 + wx.daily[0].min) / 3 : wx.feels) : undefined,
@@ -111,19 +77,14 @@ export default function Today() {
 
   return (
     <div className="page">
-      <section className="ring">
-        {ring.map(({ it, pos }, i) => <RingItem key={it.id} item={it} pos={pos} n={nums[it.id]} i={i} desk={desk} />)}
-        <div className="ring-center">
-          <div>
-            <h1 className="display">{greeting()}</h1>
-            <p className="lede">
-              {wx && loc ? <>{fmtTemp(wx.temp, settings.units)} and {wxd!.label.toLowerCase()} in {loc.name.split(",")[0]}{isWet(wx.code, wx.rainChance) ? " — take a layer for the rain." : "."} </> : <><a href="#/settings">Add your city</a> for weather-smart outfits. </>}
-              {owned.length} pieces, {looks.length ? "a few ideas below." : "add tops, bottoms and shoes to get outfit ideas."}
-            </p>
-            <button className="circle hero-cta" onClick={() => looksRef.current?.scrollIntoView({ behavior: "smooth" })}>dress me</button>
-          </div>
-        </div>
-      </section>
+      <Hero pieces={ring.map((it) => ({ key: it.id, item: it, href: `#/item/${it.id}`, label: `${nums[it.id] ? parseInt(nums[it.id]) + " " : ""}${label(it)}` }))}>
+        <h1 className="display">{greeting()}</h1>
+        <p className="lede">
+          {wx && loc ? <>{fmtTemp(wx.temp, settings.units)} and {wxd!.label.toLowerCase()} in {loc.name.split(",")[0]}{isWet(wx.code, wx.rainChance) ? " — take a layer for the rain." : "."} </> : <><a href="#/settings">Add your city</a> for weather-smart outfits. </>}
+          {owned.length} pieces, {looks.length ? "a few ideas below." : "add tops, bottoms and shoes to get outfit ideas."}
+        </p>
+        <button className="circle hero-cta" onClick={() => looksRef.current?.scrollIntoView({ behavior: "smooth" })}>dress me</button>
+      </Hero>
 
 
       <section className="section" ref={looksRef} style={{ scrollMarginTop: 20 }}>
@@ -170,21 +131,12 @@ function Empty() {
   const demo = [
     ["turtleneck", "#6b7a3f", "turtleneck"], ["shoulderbag", "#16181f", "bag"], ["skirt", "#1f3d33", "skirt"], ["cardigan", "#5a3424", "sweater"],
     ["loafers", "#5b3320", "shoes"], ["blazer", "#8a7a62", "blazer"], ["coat", "#151515", "jacket"], ["cardigan", "#8a5a2b", "sweater"],
+    ["jeans", "#2c3a52", "jeans"], ["stripedtee", "#f2efe6", "top"], ["boots", "#121212", "boots"], ["scarf", "#7a2a2a", "scarf"],
   ];
-  const desk = useDesktop();
-  const pos: Pos[] = desk ? DESK.filter((_, i) => i !== 6 && i !== 9) : MOB;
   return (
     <div className="page">
-      <section className="ring">
-        {pos.slice(0, demo.length).map((p, i) => (
-          <div key={i} className="float-item" style={{ ...place(p, desk), transform: `rotate(${((i * 37) % 21) - 10}deg)` }}>
-            <img src={`data:image/svg+xml;utf8,${encodeURIComponent(sampleSvg(demo[i][0], demo[i][1]))}`} alt="" />
-            <span className="hand" style={{ left: `${p.lab[0]}%`, top: `${p.lab[1]}%` }}>{i + 1} {demo[i][2]}</span>
-          </div>
-        ))}
-        <div className="ring-center">
-          <div>
-            <h1 className="display">Your wardrobe, curated</h1>
+      <Hero pieces={demo.map(([shape, color, name], i) => ({ key: `demo${i}`, label: `${i + 1} ${name}`, src: `data:image/svg+xml;utf8,${encodeURIComponent(sampleSvg(shape, color))}` }))}>
+        <h1 className="display">Your wardrobe, curated</h1>
             <p className="lede">Photograph or link the clothes you own. Drape cuts them out, catalogues them and mixes them into outfits for the weather, the day and the occasion.</p>
             <div className="row" style={{ justifyContent: "center", marginTop: 22 }}>
               <button className="circle" onClick={() => go("/add")}>add your first piece</button>
@@ -192,9 +144,7 @@ function Empty() {
             <p className="small" style={{ marginTop: 14 }}>
               or <button className="link" disabled={busy} onClick={async () => { setBusy(true); await loadSampleWardrobe(); setBusy(false); toast("Sample wardrobe loaded — remove it any time in settings"); }}>{busy ? "loading…" : "explore with a sample wardrobe"}</button>
             </p>
-          </div>
-        </div>
-      </section>
+      </Hero>
     </div>
   );
 }

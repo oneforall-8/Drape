@@ -68,6 +68,7 @@ export interface Item {
   notes?: string;
   sample?: boolean;
   createdAt: number;
+  updatedAt?: number;
 }
 
 export interface LayoutSlot {
@@ -89,6 +90,7 @@ export interface Outfit {
   source: "manual" | "rules" | "ai";
   notes?: string;
   createdAt: number;
+  updatedAt?: number;
 }
 
 /** One entry per day: planned or worn outfit. */
@@ -98,6 +100,7 @@ export interface DayEntry {
   outfitId?: string;
   worn: boolean;
   note?: string;
+  updatedAt?: number;
 }
 
 export type Provider = "gemini" | "openrouter" | "claude" | "custom";
@@ -115,6 +118,9 @@ export interface Settings {
   units: "c" | "f";
   currency: string;
   proxyUrl?: string;
+  driveClientId?: string;
+  driveConnected?: boolean;
+  lastSync?: number;
   theme: "system" | "light" | "dark";
   aiCostNote?: boolean;
 }
@@ -125,5 +131,5 @@ export const DEFAULT_SETTINGS: Settings = {
   autoTag: true,
   units: "c",
   currency: "₹",
-  theme: "system",
+  theme: "light",
 };
