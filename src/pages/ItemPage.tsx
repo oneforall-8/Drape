@@ -95,10 +95,17 @@ export default function ItemPage({ id }: { id?: string }) {
                 const r = await tidyPiece(stored);
                 toast(r.changed.length ? r.changed.join(", ").replace(/^./, (c) => c.toUpperCase()) : "Already looks tidy");
               })}><Wand2 size={14} /> tidy up</button>
-              <button className="btn sm ghost" title="Paid: about 3p per photo with Google billing on" disabled={!!busy} onClick={() => run("Re-shooting with AI (takes ~15s)…", async () => {
-                await reshootPiece(stored, (m) => setBusy(m));
-                toast("Re-shot — tap “original” to undo");
-              })}><Sparkles size={14} /> AI re-shoot</button>
+              {stored.reshotImageId && stored.imageId !== stored.reshotImageId && (
+                <button className="btn sm solid" disabled={!!busy} onClick={() => run("Switching…", async () => { await reshootPiece(stored); toast("Showing the AI photo"); })}><Sparkles size={14} /> use AI photo</button>
+              )}
+              <button className="btn sm ghost" title="Paid: about 3p per photo with Google billing on" disabled={!!busy} onClick={() => {
+                const again = !!stored.reshotImageId;
+                if (again && !confirm("This piece already has an AI photo. Make a new one? (about 3p)")) return;
+                run("Re-shooting with AI (takes ~15s)…", async () => {
+                  await reshootPiece(stored, (m) => setBusy(m), { again });
+                  toast("Re-shot — tap “original” to undo");
+                });
+              }}><Sparkles size={14} /> {stored.reshotImageId ? "re-shoot again" : "AI re-shoot"}</button>
             </div>
           )}
           {err && <p className="notice err" style={{ marginTop: 12 }}>{err}</p>}

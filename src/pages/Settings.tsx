@@ -349,10 +349,14 @@ function Reshoot() {
   const [key, setKey] = useState(settings.reshootKey || "");
   const [prog, setProg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const pieces = items.filter((i) => i.imageId && !i.sample && i.status !== "archived");
+  const all = items.filter((i) => i.imageId && !i.sample && i.status !== "archived");
+  // Pieces that already have an AI photo are reused, never paid for twice.
+  const pieces = all.filter((i) => !i.reshotImageId);
+  const reusable = all.filter((i) => i.reshotImageId && i.imageId !== i.reshotImageId);
   const runAll = async () => {
-    if (!confirm(`Re-shoot ${pieces.length} pieces with AI? This costs about 3p each on Google (roughly £${Math.max(0.01, pieces.length * 0.03).toFixed(2)} in total). Each piece keeps its original photo, so you can undo.`)) return;
+    if (pieces.length && !confirm(`Re-shoot ${pieces.length} piece${pieces.length === 1 ? "" : "s"} with AI? This costs about 3p each on Google (roughly £${Math.max(0.01, pieces.length * 0.03).toFixed(2)} in total). Pieces that already have an AI photo are reused for free. Each piece keeps its original photo, so you can undo.`)) return;
     setErr(null);
+    for (const r of reusable) await reshootPiece(r).catch(() => {});
     let done = 0;
     for (let i = 0; i < pieces.length; i++) {
       setProg(`Re-shooting ${i + 1} of ${pieces.length}…`);
@@ -365,7 +369,7 @@ function Reshoot() {
       }
     }
     setProg(null);
-    toast(`Re-shot ${done} piece${done === 1 ? "" : "s"} — open any piece and tap “original” to undo`);
+    toast(`Re-shot ${done} piece${done === 1 ? "" : "s"}${reusable.length ? `, reused ${reusable.length} AI photo${reusable.length === 1 ? "" : "s"}` : ""} — open any piece and tap “original” to undo`);
   };
   return (
     <div className="stack" style={{ gap: 8, marginTop: 6 }}>
@@ -378,10 +382,12 @@ function Reshoot() {
         <input className="input" type="password" placeholder="paid Gemini key (optional)" value={key} autoComplete="off" spellCheck={false} onChange={(e) => setKey(e.target.value)} />
         <button className="btn sm" onClick={async () => { await saveSettings({ reshootKey: key.trim() || undefined }); toast(key.trim() ? "Re-shoot key saved" : "Re-shoot key removed"); }}>save</button>
       </div>
-      {pieces.length > 0 && (
+      {(pieces.length > 0 || reusable.length > 0) && (
         <div className="row">
-          <button className="btn sm solid" disabled={!!prog || !(settings.reshootKey || settings.keys?.gemini)} onClick={runAll}>{prog || `re-shoot all my pieces (${pieces.length})`}</button>
-          <span className="muted small">≈ £{(pieces.length * 0.03).toFixed(2)} one-off</span>
+          <button className="btn sm solid" disabled={!!prog || (pieces.length > 0 && !(settings.reshootKey || settings.keys?.gemini))} onClick={runAll}>
+            {prog || (pieces.length ? `re-shoot ${pieces.length === all.length ? "all my pieces" : `${pieces.length} new piece${pieces.length === 1 ? "" : "s"}`} (${pieces.length})` : `use my AI photos (${reusable.length})`)}
+          </button>
+          <span className="muted small">{pieces.length ? `≈ £${(pieces.length * 0.03).toFixed(2)} one-off` : "free — already re-shot"}{all.length - pieces.length > 0 && pieces.length ? ` · ${all.length - pieces.length} already done` : ""}</span>
         </div>
       )}
       {err && <p className="notice err small" style={{ margin: 0 }}>{err}</p>}

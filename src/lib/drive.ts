@@ -245,7 +245,7 @@ async function doSync() {
 
   // Photos: upload what Drive is missing, download what this device is missing.
   const remoteImgs = new Set(files.filter((f) => f.startsWith("img-")).map((f) => f.slice(4)));
-  const needed = new Set(merged.items.flatMap((i) => [i.imageId, i.originalImageId]).filter(Boolean) as string[]);
+  const needed = new Set(merged.items.flatMap((i) => [i.imageId, i.originalImageId, i.reshotImageId]).filter(Boolean) as string[]);
   let n = 0;
   for (const id of needed) {
     n++;

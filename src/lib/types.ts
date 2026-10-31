@@ -62,6 +62,7 @@ export interface Item {
   imageId?: string; // key in the images store (local blob)
   imageUrl?: string; // remote image fallback when the blob couldn't be saved
   originalImageId?: string; // photo before background removal / replacement
+  reshotImageId?: string; // AI re-shoot result, kept so it's reused instead of paid for again
   status: ItemStatus;
   favorite: boolean;
   tags: string[];

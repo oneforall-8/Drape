@@ -138,6 +138,11 @@ export async function ingestLink(url: string, opts: { status: ItemStatus; catego
 
 /** Re-cut an existing item's photo. */
 export async function recut(item: Item, step: Step = () => {}) {
+  if (item.reshotImageId && (await getImageBlob(item.reshotImageId))) {
+    const next = { ...item, imageId: item.reshotImageId, imageUrl: undefined };
+    await saveItem(next);
+    return next;
+  }
   const src = item.originalImageId ? await getImageBlob(item.originalImageId) : item.imageId ? await getImageBlob(item.imageId) : null;
   if (!src) throw new Error("No local photo to cut out.");
   let cut = await removeBackground(src, step);
@@ -193,7 +198,10 @@ async function currentBlob(item: Item) {
   return b;
 }
 async function replacePhoto(item: Item, blob: Blob) {
-  const next = { ...item, imageId: await putImage(blob), originalImageId: item.originalImageId || item.imageId, imageUrl: undefined };
+  const id = await putImage(blob);
+  // Turning or tilting the AI photo updates the saved AI version too.
+  const reshotImageId = item.reshotImageId && item.imageId === item.reshotImageId ? id : item.reshotImageId;
+  const next = { ...item, imageId: id, reshotImageId, originalImageId: item.originalImageId || item.imageId, imageUrl: undefined };
   await saveItem(next);
   return next;
 }
@@ -205,6 +213,13 @@ export async function rotatePiece(item: Item, deg: number) {
 
 /** Upright (AI if available), straighten, soften creases and fix colour. */
 export async function tidyPiece(item: Item, opts: { askAI?: boolean } = {}) {
+  // AI re-shoots are already clean: just make sure the piece is showing it.
+  if (item.reshotImageId && (await getImageBlob(item.reshotImageId))) {
+    if (item.imageId === item.reshotImageId) return { item, changed: [] as string[] };
+    const next = { ...item, imageId: item.reshotImageId, imageUrl: undefined };
+    await saveItem(next);
+    return { item: next, changed: ["using the AI photo"] };
+  }
   const src = await currentBlob(item);
   let rotation: number | undefined;
   if (opts.askAI !== false && hasAI()) rotation = await uprightRotation(src).catch(() => undefined);
@@ -214,11 +229,20 @@ export async function tidyPiece(item: Item, opts: { askAI?: boolean } = {}) {
 }
 
 /** Paid AI re-shoot: a pressed, straight product photo of the same garment, then cut out. */
-export async function reshootPiece(item: Item, step: Step = () => {}) {
+export async function reshootPiece(item: Item, step: Step = () => {}, opts: { again?: boolean } = {}) {
+  // Reuse an earlier AI photo instead of paying again.
+  if (!opts.again && item.reshotImageId && (await getImageBlob(item.reshotImageId))) {
+    const next = { ...item, imageId: item.reshotImageId, imageUrl: undefined };
+    await saveItem(next);
+    return next;
+  }
   step("Re-shooting with AI…");
   const src = (item.originalImageId && (await getImageBlob(item.originalImageId))) || (await currentBlob(item));
   const fresh = await reshoot(src);
   let out: Blob = fresh;
   try { out = await removeBackground(fresh, step); } catch { /* white background is fine too */ }
-  return replacePhoto(item, out);
+  const id = await putImage(out);
+  const next = { ...item, imageId: id, reshotImageId: id, originalImageId: item.originalImageId || item.imageId, imageUrl: undefined };
+  await saveItem(next);
+  return next;
 }

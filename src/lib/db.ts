@@ -116,6 +116,7 @@ export async function deleteItem(id: string) {
   await d.delete("items", id);
   if (item?.imageId) await d.delete("images", item.imageId);
   if (item?.originalImageId) await d.delete("images", item.originalImageId);
+  if (item?.reshotImageId) await d.delete("images", item.reshotImageId);
   // Remove from outfits; drop outfits that become empty.
   const outfits: Outfit[] = [];
   for (const o of state.outfits) {
@@ -169,7 +170,7 @@ export async function replaceData(data: { items: Item[]; outfits: Outfit[]; days
   const d = await db();
   // Photos of pieces deleted on another device can go too.
   const keep = new Set(data.items.map((i) => i.id));
-  const gone = state.items.filter((i) => !keep.has(i.id)).flatMap((i) => [i.imageId, i.originalImageId]).filter(Boolean) as string[];
+  const gone = state.items.filter((i) => !keep.has(i.id)).flatMap((i) => [i.imageId, i.originalImageId, i.reshotImageId]).filter(Boolean) as string[];
   for (const id of gone) await d.delete("images", id);
   const tx = d.transaction(["items", "outfits", "days", "kv"], "readwrite");
   await Promise.all([tx.objectStore("items").clear(), tx.objectStore("outfits").clear(), tx.objectStore("days").clear()]);
