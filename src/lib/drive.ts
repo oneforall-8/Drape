@@ -37,7 +37,7 @@ export function appsScript() {
 const FOLDER = 'Drape wardrobe';
 const VERSION = ${SCRIPT_VERSION};
 
-function doGet() { return out_({ ok: true, app: 'drape' }); }
+function doGet() { return out_({ ok: true, app: 'drape', version: VERSION }); }
 
 function doPost(e) {
   try {
@@ -45,7 +45,7 @@ function doPost(e) {
     const props = PropertiesService.getScriptProperties();
     let key = props.getProperty('KEY');
     if (!key && typeof req.token === 'string' && req.token.length >= 24) { props.setProperty('KEY', req.token); key = req.token; }
-    if (req.token !== key) return out_({ error: 'Wrong token — this link belongs to a different Drape setup.' });
+    if (req.token !== key) return out_({ error: 'Wrong token — this link belongs to a different Drape setup.', version: VERSION });
     const folder = folder_();
     const find = function (name) { const it = folder.getFilesByName(name); return it.hasNext() ? it.next() : null; };
     if (req.action === 'ping') return out_({ ok: true, version: VERSION, folder: folder.getUrl() });
@@ -137,7 +137,12 @@ async function call<T = any>(action: string, body: Record<string, unknown> = {},
   }
   const j = await r.json().catch(() => null);
   if (!j) throw new Error("Your Drive link didn't answer properly. Make sure you copied the Web app URL (ending in /exec).");
-  if (j.error) throw new Error(/wrong token/i.test(j.error) ? "This Drive link is already connected to another device or browser. Open Drape there, copy the sync link (Settings › Google Drive sync) and paste it here. No other device? In your script, pick resetDrape in the toolbar, press Run, then connect again." : j.error);
+  if (j.error) {
+    if (!/wrong token/i.test(j.error)) throw new Error(j.error);
+    // Older scripts (before v3) don't report a version: the link is still running old code.
+    if (!j.version) throw new Error("This link is still running the older Drape script. Google only uses new code after a new deployment: in your script press Deploy → New deployment → Web app (Execute as: Me, Who has access: Anyone) → Deploy, then paste the NEW Web app URL here.");
+    throw new Error("This Drive link is already connected to another device or browser. Open Drape there, copy the sync link (Settings › Google Drive sync) and paste it here. No other device? In your script, pick resetDrape in the toolbar, press Run, then connect again.");
+  }
   return j as T;
 }
 
