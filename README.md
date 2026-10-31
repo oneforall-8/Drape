@@ -59,8 +59,9 @@ search shops by itself to find the clean product photo of something you photogra
    git remote add origin https://github.com/<you>/drape.git
    git push -u origin main
    ```
-3. On GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-4. The included workflow (`.github/workflows/deploy.yml`) builds and publishes on every push.
+3. The included workflow (`.github/workflows/deploy.yml`) builds the app and publishes it to a
+   `gh-pages` branch on every push.
+4. On GitHub: **Settings → Pages → Deploy from a branch → Branch: `gh-pages` / `(root)` → Save**.
    Your app will be at `https://<you>.github.io/<repo name>/` (for this repo: https://oneforall-8.github.io/Drape/).
 
 On your phone, open that address and use **Add to Home Screen**. It then opens like an app and
