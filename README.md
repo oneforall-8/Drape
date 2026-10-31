@@ -61,7 +61,7 @@ search shops by itself to find the clean product photo of something you photogra
    ```
 3. On GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 4. The included workflow (`.github/workflows/deploy.yml`) builds and publishes on every push.
-   Your app will be at `https://<you>.github.io/drape/`.
+   Your app will be at `https://<you>.github.io/<repo name>/` (for this repo: https://oneforall-8.github.io/Drape/).
 
 On your phone, open that address and use **Add to Home Screen**. It then opens like an app and
 works offline.
