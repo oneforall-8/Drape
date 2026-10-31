@@ -7,7 +7,7 @@ import { deleteItem, exportBackup, importBackup, saveSettings, wipeAll } from ".
 import { toast, useStore } from "../lib/hooks";
 import { loadSampleWardrobe } from "../lib/sample";
 import { locateMe, searchPlaces } from "../lib/weather";
-import { reshootPiece, tidyPiece } from "../lib/pipeline";
+import { reshootMany, tidyPiece } from "../lib/pipeline";
 import { appsScript, clearImportFolder, connect, disconnect, newToken, onSyncStatus, SCRIPT_VERSION, setImportFolder, syncLink, syncNow, syncStatus } from "../lib/drive";
 import { useEffect, useSyncExternalStore } from "react";
 
@@ -356,18 +356,8 @@ function Reshoot() {
   const runAll = async () => {
     if (pieces.length && !confirm(`Re-shoot ${pieces.length} piece${pieces.length === 1 ? "" : "s"} with AI? This costs about 3p each on Google (roughly £${Math.max(0.01, pieces.length * 0.03).toFixed(2)} in total). Pieces that already have an AI photo are reused for free. Each piece keeps its original photo, so you can undo.`)) return;
     setErr(null);
-    for (const r of reusable) await reshootPiece(r).catch(() => {});
-    let done = 0;
-    for (let i = 0; i < pieces.length; i++) {
-      setProg(`Re-shooting ${i + 1} of ${pieces.length}…`);
-      try { await reshootPiece(pieces[i]); done++; }
-      catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        // Stop on billing or quota problems; skip single bad photos.
-        if (/free tier|billing|limit|key/i.test(msg)) { setErr(msg); break; }
-        console.warn(e);
-      }
-    }
+    const { done, error } = await reshootMany(all, setProg);
+    if (error) setErr(error);
     setProg(null);
     toast(`Re-shot ${done} piece${done === 1 ? "" : "s"}${reusable.length ? `, reused ${reusable.length} AI photo${reusable.length === 1 ? "" : "s"}` : ""} — open any piece and tap “original” to undo`);
   };

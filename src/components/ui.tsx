@@ -14,7 +14,7 @@ export function ItemImg({ item, className, alt }: { item?: Item; className?: str
 export const label = (it: Item) => (it.subcategory || it.category).toLowerCase();
 
 /** A cut-out piece floating on the page with a handwritten catalogue label. */
-export function Piece({ item, num, onClick, dim, href }: { item: Item; num?: string; onClick?: () => void; dim?: boolean; href?: string }) {
+export function Piece({ item, num, onClick, dim, href, selected }: { item: Item; num?: string; onClick?: () => void; dim?: boolean; href?: string; selected?: boolean }) {
   const h = hashNum(item.id);
   const rot = (h - 0.5) * 6;
   const dy = (hashNum(item.id + "y") - 0.5) * 10;
@@ -22,7 +22,7 @@ export function Piece({ item, num, onClick, dim, href }: { item: Item; num?: str
   const side = h > 0.5;
   const Tag = href ? "a" : "div";
   return (
-    <Tag className={"piece" + (dim ? " dim" : "")} href={href} onClick={onClick} role={onClick ? "button" : undefined}>
+    <Tag className={"piece" + (dim ? " dim" : "") + (selected !== undefined ? " selectable" : "") + (selected ? " selected" : "")} href={href} onClick={onClick} role={onClick ? "button" : undefined} aria-pressed={selected}>
       <div className="img-wrap" style={{ transform: `translateY(${dy}px) rotate(${rot}deg) scale(${sc})` }}>
         <ItemImg item={item} />
       </div>
@@ -30,6 +30,8 @@ export function Piece({ item, num, onClick, dim, href }: { item: Item; num?: str
         {num ? `${num} ` : ""}{label(item)}
       </span>
       {item.favorite && <Heart className="heart" size={15} fill="currentColor" />}
+      {selected !== undefined && <span className="pick">{selected && <Check size={14} />}</span>}
+      {selected !== undefined && item.reshotImageId && <span className="ai-tag hand">ai</span>}
     </Tag>
   );
 }

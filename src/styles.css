@@ -358,3 +358,16 @@ p.hand, .hand.lg { white-space: normal; }
 main { overflow-x: clip; }
 .hand { text-shadow: 0 0 3px var(--paper), 0 0 6px var(--paper); }
 .split > div > .hero-img { overflow: hidden; display: block; }
+
+/* ---------- Select mode (closet) ---------- */
+.piece.selectable .img-wrap { transition: transform .2s, opacity .2s; }
+.piece.selectable:not(.selected) .img-wrap { opacity: .55; }
+.piece .pick { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--paper); display: grid; place-items: center; }
+.piece.selected .pick { background: var(--ink); color: var(--paper); }
+.piece .ai-tag { position: absolute; top: 8px; left: 8px; font-size: 17px; color: var(--muted); }
+.select-bar {
+  position: fixed; left: 0; right: 0; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom)); z-index: 45;
+  background: var(--paper); border-top: 1px solid var(--line); box-shadow: 0 -8px 24px rgba(0,0,0,.06);
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
+}
+@media (min-width: 900px) { .select-bar { bottom: 0; left: 50%; right: auto; transform: translateX(-50%); width: min(820px, calc(100vw - 96px)); border: 1px solid var(--line); bottom: 24px; } }

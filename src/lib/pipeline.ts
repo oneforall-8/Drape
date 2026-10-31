@@ -246,3 +246,28 @@ export async function reshootPiece(item: Item, step: Step = () => {}, opts: { ag
   await saveItem(next);
   return next;
 }
+
+/**
+ * Re-shoot several pieces. Pieces that already have an AI photo are reused for free.
+ * Stops early on billing/quota/key problems (returned as `error`), skips single bad photos.
+ */
+export async function reshootMany(items: Item[], onProgress: (msg: string) => void = () => {}) {
+  const fresh = items.filter((i) => !i.reshotImageId);
+  const reuse = items.filter((i) => i.reshotImageId && i.imageId !== i.reshotImageId);
+  for (const r of reuse) await reshootPiece(r).catch(() => {});
+  let done = 0, failed = 0;
+  let error: string | undefined;
+  for (let i = 0; i < fresh.length; i++) {
+    onProgress(`Re-shooting ${i + 1} of ${fresh.length}…`);
+    try { await reshootPiece(fresh[i]); done++; }
+    catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/free tier|billing|limit|key/i.test(msg)) { error = msg; break; }
+      failed++;
+      console.warn(e);
+    }
+  }
+  return { done, reused: reuse.length, failed, error };
+}
+
+export const reshootCost = (items: Item[]) => items.filter((i) => !i.reshotImageId).length * 0.03;
