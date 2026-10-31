@@ -214,6 +214,7 @@ function DriveSettings() {
   const st = useSyncExternalStore(onSyncStatus, syncStatus, syncStatus);
   const [link, setLink] = useState("");
   const [folderLink, setFolderLink] = useState("");
+  const [showScript, setShowScript] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -232,7 +233,7 @@ function DriveSettings() {
     setBusy(false);
   };
   const last = settings.lastSync ? new Date(settings.lastSync).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null;
-  const script = token ? appsScript(token) : "";
+  const script = appsScript();
   let scriptBox: HTMLTextAreaElement | null = null;
   let linkBox: HTMLTextAreaElement | null = null;
 
@@ -293,8 +294,12 @@ function DriveSettings() {
         <>
           <ol className="small" style={{ margin: 0, paddingLeft: 20, color: "var(--ink-2)", display: "grid", gap: 10 }}>
             <li>
-              <button className="btn sm solid" disabled={!token} onClick={() => copy(script, "script", scriptBox)}>{copied === "script" ? "copied ✓" : "copy my script"}</button>
-              <textarea ref={(el) => { scriptBox = el; }} readOnly value={script} className="visually-hidden" aria-hidden tabIndex={-1} />
+              <div className="row">
+                <button className="btn sm solid" onClick={() => copy(script, "script", scriptBox)}>{copied === "script" ? "copied ✓" : "copy my script"}</button>
+                <button className="link small" onClick={() => setShowScript(!showScript)}>{showScript ? "hide it" : "copy not working? show it"}</button>
+              </div>
+              <textarea ref={(el) => { scriptBox = el; }} readOnly value={script} aria-hidden={!showScript} tabIndex={showScript ? 0 : -1}
+                className={showScript ? "textarea" : "visually-hidden"} rows={8} style={{ fontFamily: "monospace", fontSize: 11, marginTop: 8 }} onFocus={(e) => e.target.select()} />
             </li>
             <li>Open <a href="https://script.google.com/home/projects/create" target="_blank" rel="noreferrer">script.google.com → New project</a>, delete what's there, paste, and press <b>Save</b> (💾).</li>
             <li>Click <b>Deploy → New deployment</b>, pick type <b>Web app</b>, set <b>Execute as: Me</b> and <b>Who has access: Anyone</b>, then <b>Deploy</b>.</li>

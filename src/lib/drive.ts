@@ -13,7 +13,7 @@ import { ingestPhoto } from "./pipeline";
 import type { DayEntry, Item, Outfit } from "./types";
 
 const DATA = "drape-data.json";
-export const SCRIPT_VERSION = 2;
+export const SCRIPT_VERSION = 3;
 
 export type SyncState = "off" | "idle" | "syncing" | "error";
 let status: { state: SyncState; msg?: string } = { state: "off" };
@@ -29,11 +29,11 @@ export function newToken() {
   return [...a].map((b) => b.toString(36).padStart(2, "0")).join("").slice(0, 32);
 }
 
-export function appsScript(token: string) {
+export function appsScript() {
   return `// Drape — saves your wardrobe to a "Drape wardrobe" folder in your Google Drive.
 // Deploy: Deploy → New deployment → Web app → Execute as: Me → Who has access: Anyone.
-// The token below is your private key. Don't share this script or its link.
-const TOKEN = '${token}';
+// The first Drape app to connect sets a private key; after that only devices with your sync link get in.
+// Lost all your devices? Choose resetDrape in the toolbar above and press Run, then connect again.
 const FOLDER = 'Drape wardrobe';
 const VERSION = ${SCRIPT_VERSION};
 
@@ -42,7 +42,10 @@ function doGet() { return out_({ ok: true, app: 'drape' }); }
 function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
-    if (req.token !== TOKEN) return out_({ error: 'Wrong token — this link belongs to a different Drape setup.' });
+    const props = PropertiesService.getScriptProperties();
+    let key = props.getProperty('KEY');
+    if (!key && typeof req.token === 'string' && req.token.length >= 24) { props.setProperty('KEY', req.token); key = req.token; }
+    if (req.token !== key) return out_({ error: 'Wrong token — this link belongs to a different Drape setup.' });
     const folder = folder_();
     const find = function (name) { const it = folder.getFilesByName(name); return it.hasNext() ? it.next() : null; };
     if (req.action === 'ping') return out_({ ok: true, version: VERSION, folder: folder.getUrl() });
@@ -107,6 +110,10 @@ function jpeg_(file) {
   }
 }
 
+function resetDrape() {
+  PropertiesService.getScriptProperties().deleteProperty('KEY');
+}
+
 function folder_() {
   const it = DriveApp.getFoldersByName(FOLDER);
   return it.hasNext() ? it.next() : DriveApp.createFolder(FOLDER);
@@ -130,7 +137,7 @@ async function call<T = any>(action: string, body: Record<string, unknown> = {},
   }
   const j = await r.json().catch(() => null);
   if (!j) throw new Error("Your Drive link didn't answer properly. Make sure you copied the Web app URL (ending in /exec).");
-  if (j.error) throw new Error(/wrong token/i.test(j.error) ? "This link doesn't match. On a new device, paste the full sync link from your first device (Settings › Google Drive sync › copy sync link)." : j.error);
+  if (j.error) throw new Error(/wrong token/i.test(j.error) ? "This Drive link is already connected to another device or browser. Open Drape there, copy the sync link (Settings › Google Drive sync) and paste it here. No other device? In your script, pick resetDrape in the toolbar, press Run, then connect again." : j.error);
   return j as T;
 }
 
