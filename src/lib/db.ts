@@ -246,7 +246,8 @@ export async function exportBackup(): Promise<Blob> {
     const b = await d.get("images", k);
     if (b) images[k] = await toDataUrl(b);
   }
-  const { apiKey: _omit, ...settings } = state.settings;
+  // Keys and sign-in details stay on this device only.
+  const { apiKey: _k1, keys: _k2, driveConnected: _d1, lastSync: _d2, ...settings } = state.settings;
   const data = { app: "drape", version: 1, exportedAt: new Date().toISOString(), items: state.items, outfits: state.outfits, days: Object.values(state.days), settings, images };
   return new Blob([JSON.stringify(data)], { type: "application/json" });
 }
@@ -264,7 +265,7 @@ export async function importBackup(file: File) {
   for (const o of data.outfits || []) tx.objectStore("outfits").put(o);
   for (const x of data.days || []) tx.objectStore("days").put(x);
   await tx.done;
-  if (data.settings) await d.put("kv", { ...state.settings, ...data.settings, apiKey: state.settings.apiKey }, "settings");
+  if (data.settings) await d.put("kv", { ...state.settings, ...data.settings, apiKey: state.settings.apiKey, keys: state.settings.keys, driveConnected: state.settings.driveConnected }, "settings");
   await load();
   changed();
 }
