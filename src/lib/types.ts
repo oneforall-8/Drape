@@ -118,7 +118,9 @@ export interface Settings {
   units: "c" | "f";
   currency: string;
   proxyUrl?: string;
-  driveClientId?: string;
+  syncUrl?: string; // Google Apps Script web app link
+  syncToken?: string; // private key baked into the user's copy of the script
+  syncFolderUrl?: string;
   driveConnected?: boolean;
   lastSync?: number;
   theme: "system" | "light" | "dark";

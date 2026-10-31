@@ -67,10 +67,25 @@ search shops by itself to find the clean product photo of something you photogra
 On your phone, open that address and use **Add to Home Screen**. It then opens like an app and
 works offline.
 
+## Sync with Google Drive (free, about 2 minutes)
+
+Drape saves your wardrobe to a **Drape wardrobe** folder in your own Google Drive through a tiny
+Google Apps Script that runs in your account. No Google Cloud project or sign-in setup is needed.
+
+1. In Drape: **Settings → Google Drive sync → copy my script**.
+2. Open <https://script.google.com/home/projects/create>, replace the code with what you copied, and save.
+3. **Deploy → New deployment → Web app**, with *Execute as: Me* and *Who has access: Anyone*, then **Deploy**.
+4. Authorise it (Advanced → Go to project → Allow). Google calls it "unsafe" only because it's
+   your own unpublished script.
+5. Paste the **Web app URL** into Drape and tap **connect**.
+
+On your other devices, paste the **sync link** shown in Settings (it includes your private key).
+Keep that link private: anyone with it can read and change your wardrobe.
+
 ## Your data
 
-- Everything is stored in your browser (IndexedDB) on that device. Phone and laptop are separate.
-  Use **settings → export backup / import backup** to move or back up your wardrobe.
+- Everything is stored in your browser (IndexedDB) on each device, and in your Google Drive if you
+  connect it. **Export backup** in Settings makes an extra copy file.
 - API keys are stored only in your browser and sent only to the provider you choose.
 - Shop links are read through the free [Jina Reader](https://jina.ai/reader). Shop photos that
   block downloads are fetched through the free [images.weserv.nl](https://images.weserv.nl) relay.

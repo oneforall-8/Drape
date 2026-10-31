@@ -7,8 +7,8 @@ import { deleteItem, exportBackup, importBackup, saveSettings, wipeAll } from ".
 import { toast, useStore } from "../lib/hooks";
 import { loadSampleWardrobe } from "../lib/sample";
 import { locateMe, searchPlaces } from "../lib/weather";
-import { connectDrive, disconnect, onSyncStatus, syncNow, syncStatus, tapSync } from "../lib/drive";
-import { useSyncExternalStore } from "react";
+import { appsScript, connect, disconnect, newToken, onSyncStatus, syncLink, syncNow, syncStatus } from "../lib/drive";
+import { useEffect, useSyncExternalStore } from "react";
 
 export default function SettingsPage() {
   const { settings, items } = useStore();
@@ -42,6 +42,8 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      <DriveSettings />
+
       <section className="section stack">
         <h2 className="h3">Photos</h2>
         <Toggle on={settings.autoRemoveBg} onChange={(v) => saveSettings({ autoRemoveBg: v })} label="Cut out backgrounds automatically" hint="Runs on your device — free and private. First use downloads a ~40 MB model." />
@@ -61,8 +63,6 @@ export default function SettingsPage() {
         <h2 className="h3">Appearance</h2>
         <Chips options={["light", "dark", "system"] as const} value={settings.theme} labels={{ light: "white", dark: "dark", system: "match my device" }} onChange={(t) => saveSettings({ theme: t })} />
       </section>
-
-      <DriveSettings />
 
       <section className="section stack">
         <h2 className="h3">Your data</h2>
@@ -212,60 +212,73 @@ function hasKey(s: ReturnType<typeof useStore>["settings"], p: Provider) {
 function DriveSettings() {
   const { settings } = useStore();
   const st = useSyncExternalStore(onSyncStatus, syncStatus, syncStatus);
-  const [cid, setCid] = useState(settings.driveClientId || "");
+  const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [help, setHelp] = useState(!settings.driveClientId);
+  const [copied, setCopied] = useState<string | null>(null);
+  const token = settings.syncToken;
+  // Make this device's private key the first time the section is shown.
+  useEffect(() => { if (!settings.syncToken) saveSettings({ syncToken: newToken() }); }, [settings.syncToken]);
+
+  const copy = async (text: string, what: string, el?: HTMLTextAreaElement | null) => {
+    try { await navigator.clipboard.writeText(text); setCopied(what); }
+    catch { el?.select(); setCopied(null); toast("Select all and copy it manually"); }
+    setTimeout(() => setCopied(null), 2500);
+  };
   const go = async (fn: () => Promise<void>) => {
     setBusy(true); setErr(null);
     try { await fn(); } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     setBusy(false);
   };
   const last = settings.lastSync ? new Date(settings.lastSync).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null;
+  const script = token ? appsScript(token) : "";
+  let scriptBox: HTMLTextAreaElement | null = null;
+  let linkBox: HTMLTextAreaElement | null = null;
 
   return (
     <section className="section stack">
       <h2 className="h3">Google Drive sync</h2>
       <p className="small" style={{ margin: 0, color: "var(--ink-2)" }}>
         Saves your pieces, photos, looks and calendar to a <b>Drape wardrobe</b> folder in your own Google Drive (free, 15 GB),
-        and keeps your phone and laptop in step. Drape can only see the files it creates, never the rest of your Drive.
+        and keeps your phone and laptop in step. It works through a small script in your Google account, so there's nothing else to sign up for.
       </p>
-      {settings.driveConnected ? (
+      {settings.driveConnected && settings.syncUrl ? (
         <>
           <p className="notice small" style={{ margin: 0 }}>
             Connected{last ? <> · last synced {last}</> : null}
             {st.state === "syncing" && <> · syncing{st.msg ? ` (${st.msg.toLowerCase()})` : "…"}</>}
-            {st.state === "needs-auth" && <> · Google asks you to sign in again about once an hour of use — tap <b>sync now</b>.</>}
             {st.state === "error" && <><br /><span style={{ color: "var(--danger)" }}>{st.msg}</span></>}
+            {settings.syncFolderUrl && <><br /><a href={settings.syncFolderUrl} target="_blank" rel="noreferrer">open the folder in Drive ↗</a></>}
           </p>
           <div className="row">
-            <button className="btn sm solid" disabled={busy || st.state === "syncing"} onClick={() => go(() => tapSync())}>sync now</button>
-            <button className="btn sm ghost" disabled={busy} onClick={() => go(() => disconnect())}>disconnect</button>
+            <button className="btn sm solid" disabled={busy || st.state === "syncing"} onClick={() => go(() => syncNow())}>sync now</button>
+            <button className="btn sm ghost" disabled={busy} onClick={() => go(() => disconnect())}>disconnect this device</button>
           </div>
+          <label className="field"><span>sync link for your other devices — paste it there under Settings › Google Drive sync. Keep it private: anyone with it can see your wardrobe.</span>
+            <textarea ref={(el) => { linkBox = el; }} className="textarea small" readOnly rows={2} value={syncLink()} style={{ fontFamily: "monospace", fontSize: 12 }} />
+          </label>
+          <div><button className="btn sm" onClick={() => copy(syncLink(), "link", linkBox)}>{copied === "link" ? "copied ✓" : "copy sync link"}</button></div>
         </>
       ) : (
         <>
-          <label className="field"><span>Google OAuth client ID</span>
-            <input className="input" placeholder="1234567890-abc….apps.googleusercontent.com" value={cid} spellCheck={false}
-              onChange={(e) => setCid(e.target.value.trim())} onBlur={() => saveSettings({ driveClientId: cid || undefined })} />
-          </label>
-          <div className="row">
-            <button className="btn sm solid" disabled={busy || !cid} onClick={() => go(async () => { await saveSettings({ driveClientId: cid }); await connectDrive(); void syncNow(); toast("Google Drive connected"); })}>
-              {busy ? "connecting…" : "connect Google Drive"}
-            </button>
-            <button className="link small" onClick={() => setHelp(!help)}>{help ? "hide" : "show"} setup steps</button>
+          <ol className="small" style={{ margin: 0, paddingLeft: 20, color: "var(--ink-2)", display: "grid", gap: 10 }}>
+            <li>
+              <button className="btn sm solid" disabled={!token} onClick={() => copy(script, "script", scriptBox)}>{copied === "script" ? "copied ✓" : "copy my script"}</button>
+              <textarea ref={(el) => { scriptBox = el; }} readOnly value={script} className="visually-hidden" aria-hidden tabIndex={-1} />
+            </li>
+            <li>Open <a href="https://script.google.com/home/projects/create" target="_blank" rel="noreferrer">script.google.com → New project</a>, delete what's there, paste, and press <b>Save</b> (💾).</li>
+            <li>Click <b>Deploy → New deployment</b>, pick type <b>Web app</b>, set <b>Execute as: Me</b> and <b>Who has access: Anyone</b>, then <b>Deploy</b>.</li>
+            <li>Google asks you to authorise it: choose your account → <b>Advanced</b> → <b>Go to Untitled project (unsafe)</b> → <b>Allow</b>. (It says “unsafe” only because it's your own unpublished script.)</li>
+            <li>Copy the <b>Web app URL</b> and paste it here:</li>
+          </ol>
+          <div className="row" style={{ flexWrap: "nowrap" }}>
+            <input className="input" placeholder="https://script.google.com/macros/s/…/exec" value={link} spellCheck={false} onChange={(e) => setLink(e.target.value)} />
+            <button className="btn sm solid" disabled={busy || !link.trim()} onClick={() => go(async () => { await connect(link, token); toast("Google Drive connected"); setLink(""); })}>{busy ? "connecting…" : "connect"}</button>
           </div>
+          <p className="muted small" style={{ margin: 0 }}>Already set up on another device? Paste the <b>sync link</b> from that device's settings into the same box.</p>
         </>
       )}
       {err && <p className="notice err small" style={{ margin: 0 }}>{err}</p>}
-      {help && !settings.driveConnected && (
-        <ol className="small" style={{ margin: 0, paddingLeft: 20, color: "var(--ink-2)", display: "grid", gap: 6 }}>
-          <li>Open <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" rel="noreferrer">Google Drive API</a> in Google Cloud (use the same Google account and project as your Gemini key) and click <b>Enable</b>.</li>
-          <li>Open <a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noreferrer">Google Auth Platform</a> → <b>Get started</b>. App name: Drape. Audience: <b>External</b>. Then under <b>Audience → Test users</b>, add your own Gmail address.</li>
-          <li>Go to <a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noreferrer">Clients</a> → <b>Create client</b> → type <b>Web application</b>. Under <b>Authorized JavaScript origins</b> add <code>{location.origin}</code>{location.origin !== "https://oneforall-8.github.io" && <> (and <code>https://oneforall-8.github.io</code> for the live site)</>}. Create, then copy the <b>Client ID</b>.</li>
-          <li>Paste it above and tap <b>connect Google Drive</b>. Google will warn the app is unverified — that's expected for your own private app: choose <b>Continue</b>.</li>
-        </ol>
-      )}
     </section>
   );
 }

@@ -1,136 +1,133 @@
-// Google Drive sync — the app's free backend.
+// Google Drive sync through a tiny Google Apps Script "web app" the user deploys from their own account.
+// No Google Cloud project, no OAuth client, no repeated sign-ins: Drape talks to one private link.
 //
-// Everything is saved into a "Drape wardrobe" folder in the user's own Google Drive:
+// The script saves everything into a "Drape wardrobe" folder in the user's Drive:
 //   drape-data.json   pieces, looks and calendar
-//   <imageId>.webp    one file per photo
-// The app can only see files it created (drive.file scope), never the rest of the user's Drive.
-// Each record carries an updatedAt time; when two devices disagree, the newer edit wins.
+//   img-<imageId>     one file per photo
+// Every request carries a long random token baked into the user's copy of the script,
+// so the link alone isn't enough to read or change anything.
+// Each record has an updatedAt time; when two devices disagree, the newer edit wins.
 
 import { getImageBlob, getState, getTombstones, hasImage, onDataChange, putImage, replaceData, saveSettings, type Tombstones } from "./db";
 import type { DayEntry, Item, Outfit } from "./types";
 
-const SCOPE = "https://www.googleapis.com/auth/drive.file";
-const FOLDER = "Drape wardrobe";
 const DATA = "drape-data.json";
-const API = "https://www.googleapis.com/drive/v3";
-const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 
-export type SyncState = "off" | "idle" | "syncing" | "needs-auth" | "error";
+export type SyncState = "off" | "idle" | "syncing" | "error";
 let status: { state: SyncState; msg?: string } = { state: "off" };
 const listeners = new Set<() => void>();
 export const syncStatus = () => status;
 export const onSyncStatus = (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); };
 function setStatus(state: SyncState, msg?: string) { status = { state, msg }; listeners.forEach((l) => l()); }
 
-class NeedsAuth extends Error {}
-
-// ---------- Sign-in (Google Identity Services token flow) ----------
-const TOKEN_KEY = "drape.drive.token";
-let token: { value: string; exp: number } | null = (() => {
-  try { const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || "null"); return t && t.exp > Date.now() ? t : null; } catch { return null; }
-})();
-const tokenValid = () => !!token && token.exp - 60_000 > Date.now();
-
-let gisPromise: Promise<void> | null = null;
-/** Load Google's sign-in script ahead of time, so the sign-in popup can open straight from a tap. */
-export function prepareDrive() {
-  if (!gisPromise) {
-    gisPromise = new Promise<void>((res, rej) => {
-      if ((window as any).google?.accounts?.oauth2) return res();
-      const s = document.createElement("script");
-      s.src = "https://accounts.google.com/gsi/client";
-      s.async = true;
-      s.onload = () => res();
-      s.onerror = () => { gisPromise = null; rej(new Error("Couldn't load Google sign-in.")); };
-      document.head.appendChild(s);
-    });
-  }
-  return gisPromise;
+// ---------- The script the user pastes into script.google.com ----------
+export function newToken() {
+  const a = new Uint8Array(24);
+  crypto.getRandomValues(a);
+  return [...a].map((b) => b.toString(36).padStart(2, "0")).join("").slice(0, 32);
 }
 
-/** Must be called from a tap/click (browsers only allow sign-in popups then). */
-export async function signIn(): Promise<void> {
-  const clientId = getState().settings.driveClientId;
-  if (!clientId) throw new Error("Add your Google OAuth client ID first (see the steps below).");
-  await prepareDrive();
-  await new Promise<void>((res, rej) => {
-    const client = (window as any).google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: SCOPE,
-      callback: (r: { access_token?: string; expires_in?: number; error?: string; error_description?: string }) => {
-        if (r.error || !r.access_token) return rej(new Error(r.error_description || r.error || "Google sign-in failed."));
-        token = { value: r.access_token, exp: Date.now() + (r.expires_in || 3600) * 1000 };
-        try { localStorage.setItem(TOKEN_KEY, JSON.stringify(token)); } catch { /* ignore */ }
-        res();
-      },
-      error_callback: (e: { type?: string; message?: string }) => rej(new Error(e.type === "popup_closed" ? "Sign-in window was closed." : e.message || "Google sign-in failed.")),
-    });
-    client.requestAccessToken({ prompt: getState().settings.driveConnected ? "" : "consent" });
-  });
+export function appsScript(token: string) {
+  return `// Drape — saves your wardrobe to a "Drape wardrobe" folder in your Google Drive.
+// Deploy: Deploy → New deployment → Web app → Execute as: Me → Who has access: Anyone.
+// The token below is your private key. Don't share this script or its link.
+const TOKEN = '${token}';
+const FOLDER = 'Drape wardrobe';
+
+function doGet() { return out_({ ok: true, app: 'drape' }); }
+
+function doPost(e) {
+  try {
+    const req = JSON.parse(e.postData.contents);
+    if (req.token !== TOKEN) return out_({ error: 'Wrong token — this link belongs to a different Drape setup.' });
+    const folder = folder_();
+    const find = function (name) { const it = folder.getFilesByName(name); return it.hasNext() ? it.next() : null; };
+    if (req.action === 'ping') return out_({ ok: true, folder: folder.getUrl() });
+    if (req.action === 'list') {
+      const names = [], it = folder.getFiles();
+      while (it.hasNext()) names.push(it.next().getName());
+      return out_({ files: names, folder: folder.getUrl() });
+    }
+    if (req.action === 'get') {
+      const f = find(req.name);
+      if (!f) return out_({ missing: true });
+      const b = f.getBlob();
+      return out_(req.text ? { text: b.getDataAsString() } : { data: Utilities.base64Encode(b.getBytes()), mime: b.getContentType() });
+    }
+    if (req.action === 'put') {
+      const old = find(req.name);
+      if (req.text !== undefined) {
+        if (old) old.setContent(req.text); else folder.createFile(req.name, req.text, 'application/json');
+      } else {
+        if (old) old.setTrashed(true);
+        folder.createFile(Utilities.newBlob(Utilities.base64Decode(req.data), req.mime, req.name));
+      }
+      return out_({ ok: true });
+    }
+    if (req.action === 'delete') {
+      const f = find(req.name);
+      if (f) f.setTrashed(true);
+      return out_({ ok: true });
+    }
+    return out_({ error: 'Unknown action' });
+  } catch (err) {
+    return out_({ error: String(err) });
+  }
+}
+
+function folder_() {
+  const it = DriveApp.getFoldersByName(FOLDER);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(FOLDER);
+}
+
+function out_(o) {
+  return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+}
+`;
+}
+
+// ---------- Talking to the script ----------
+async function call<T = any>(action: string, body: Record<string, unknown> = {}, conn = connection()): Promise<T> {
+  if (!conn) throw new Error("Google Drive isn't connected.");
+  let r: Response;
+  try {
+    // A plain-text body keeps this a "simple" request, which Apps Script accepts from any website.
+    r = await fetch(conn.url, { method: "POST", body: JSON.stringify({ token: conn.token, action, ...body }) });
+  } catch {
+    throw new Error("Couldn't reach your Drive link. Check your connection, and that the script is deployed with access set to “Anyone”.");
+  }
+  const j = await r.json().catch(() => null);
+  if (!j) throw new Error("Your Drive link didn't answer properly. Make sure you copied the Web app URL (ending in /exec).");
+  if (j.error) throw new Error(/wrong token/i.test(j.error) ? "This link doesn't match. On a new device, paste the full sync link from your first device (Settings › Google Drive sync › copy sync link)." : j.error);
+  return j as T;
+}
+
+function connection() {
+  const s = getState().settings;
+  return s.syncUrl && s.syncToken ? { url: s.syncUrl, token: s.syncToken } : null;
+}
+
+/** A single link for other devices: the web app URL with the token after a #. */
+export function syncLink() {
+  const c = connection();
+  return c ? `${c.url}#${c.token}` : "";
+}
+
+/** Connect with a web app URL (from setup) or a full sync link (from another device). */
+export async function connect(input: string, tokenIfMissing?: string) {
+  const [rawUrl, hashToken] = input.trim().split("#");
+  const url = rawUrl.trim();
+  if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) throw new Error("That doesn't look like an Apps Script link. It should start with https://script.google.com/macros/s/…");
+  const token = hashToken || tokenIfMissing;
+  if (!token) throw new Error("This link is missing its key. On your first device, copy the full sync link from Settings.");
+  const res = await call<{ ok: boolean; folder: string }>("ping", {}, { url, token });
+  await saveSettings({ syncUrl: url, syncToken: token, driveConnected: true, syncFolderUrl: res.folder });
+  await syncNow();
 }
 
 export async function disconnect() {
-  try { if (token) (window as any).google?.accounts?.oauth2?.revoke?.(token.value, () => {}); } catch { /* ignore */ }
-  token = null;
-  try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
-  await saveSettings({ driveConnected: false });
-  folderId = null;
+  await saveSettings({ driveConnected: false, syncUrl: undefined });
   setStatus("off");
-}
-
-// ---------- Drive REST ----------
-async function api(url: string, init: RequestInit = {}): Promise<Response> {
-  if (!tokenValid()) throw new NeedsAuth();
-  const r = await fetch(url, { ...init, headers: { ...(init.headers || {}), Authorization: `Bearer ${token!.value}` } });
-  if (r.status === 401) { token = null; throw new NeedsAuth(); }
-  if (!r.ok) {
-    const j = await r.json().catch(() => null);
-    throw new Error(`Google Drive error (${r.status}): ${j?.error?.message || r.statusText}`);
-  }
-  return r;
-}
-
-interface DFile { id: string; name: string; appProperties?: Record<string, string> }
-
-let folderId: string | null = null;
-async function ensureFolder(): Promise<string> {
-  if (folderId) return folderId;
-  const q = encodeURIComponent(`name='${FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-  const found = await (await api(`${API}/files?q=${q}&fields=files(id)&spaces=drive`)).json();
-  if (found.files?.length) return (folderId = found.files[0].id);
-  const created = await (await api(`${API}/files?fields=id`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: FOLDER, mimeType: "application/vnd.google-apps.folder" }),
-  })).json();
-  return (folderId = created.id);
-}
-
-async function listFolder(folder: string): Promise<DFile[]> {
-  const out: DFile[] = [];
-  let page = "";
-  do {
-    const q = encodeURIComponent(`'${folder}' in parents and trashed=false`);
-    const j = await (await api(`${API}/files?q=${q}&fields=nextPageToken,files(id,name,appProperties)&pageSize=1000${page ? `&pageToken=${page}` : ""}`)).json();
-    out.push(...(j.files || []));
-    page = j.nextPageToken || "";
-  } while (page);
-  return out;
-}
-
-function multipart(meta: object, body: Blob) {
-  const b = "drape" + Math.random().toString(36).slice(2);
-  return {
-    body: new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: ${body.type || "application/octet-stream"}\r\n\r\n`, body, `\r\n--${b}--`]),
-    type: `multipart/related; boundary=${b}`,
-  };
-}
-async function createFile(meta: object, body: Blob) {
-  const m = multipart(meta, body);
-  return (await api(`${UPLOAD}/files?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": m.type }, body: m.body })).json();
-}
-async function updateFile(id: string, body: Blob) {
-  await api(`${UPLOAD}/files/${id}?uploadType=media`, { method: "PATCH", headers: { "Content-Type": body.type }, body });
 }
 
 // ---------- Merge ----------
@@ -152,6 +149,19 @@ function mergeTombs(a: Tombstones, b?: Tombstones): Tombstones {
   return out;
 }
 
+const blobToB64 = (b: Blob) => new Promise<string>((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(String(r.result).split(",")[1] || "");
+  r.onerror = rej;
+  r.readAsDataURL(b);
+});
+const b64ToBlob = (data: string, mime: string) => {
+  const bin = atob(data);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime || "application/octet-stream" });
+};
+
 // ---------- Sync ----------
 let running: Promise<void> | null = null;
 let again = false;
@@ -159,10 +169,7 @@ let again = false;
 export function syncNow(): Promise<void> {
   if (running) { again = true; return running; }
   running = doSync()
-    .catch((e) => {
-      if (e instanceof NeedsAuth) setStatus("needs-auth", "Tap to reconnect Google Drive");
-      else setStatus("error", e instanceof Error ? e.message : String(e));
-    })
+    .catch((e) => setStatus("error", e instanceof Error ? e.message : String(e)))
     .finally(() => {
       running = null;
       if (again) { again = false; void syncNow(); }
@@ -171,13 +178,12 @@ export function syncNow(): Promise<void> {
 }
 
 async function doSync() {
-  if (!getState().settings.driveConnected) return;
-  if (!tokenValid()) throw new NeedsAuth();
+  if (!getState().settings.driveConnected || !connection()) return;
   setStatus("syncing");
-  const folder = await ensureFolder();
-  const files = await listFolder(folder);
-  const dataFile = files.find((f) => f.name === DATA);
-  const remote: Snapshot | null = dataFile ? await (await api(`${API}/files/${dataFile.id}?alt=media`)).json().catch(() => null) : null;
+  const { files } = await call<{ files: string[] }>("list");
+  const remoteRaw = files.includes(DATA) ? (await call<{ text?: string }>("get", { name: DATA, text: true })).text : undefined;
+  let remote: Snapshot | null = null;
+  try { remote = remoteRaw ? JSON.parse(remoteRaw) : null; } catch { remote = null; }
 
   const { items, outfits, days } = getState();
   const tombstones = mergeTombs(getTombstones(), remote?.tombstones);
@@ -191,7 +197,7 @@ async function doSync() {
   };
 
   // Photos: upload what Drive is missing, download what this device is missing.
-  const remoteImgs = new Map(files.filter((f) => f.appProperties?.imageId).map((f) => [f.appProperties!.imageId, f.id]));
+  const remoteImgs = new Set(files.filter((f) => f.startsWith("img-")).map((f) => f.slice(4)));
   const needed = new Set(merged.items.flatMap((i) => [i.imageId, i.originalImageId]).filter(Boolean) as string[]);
   let n = 0;
   for (const id of needed) {
@@ -200,22 +206,16 @@ async function doSync() {
     if (local && !remoteImgs.has(id)) {
       setStatus("syncing", `Uploading photos ${n}/${needed.size}`);
       const blob = await getImageBlob(id);
-      if (blob) {
-        const ext = blob.type.split("/")[1]?.replace("svg+xml", "svg") || "img";
-        const f = await createFile({ name: `${id}.${ext}`, parents: [folder], appProperties: { imageId: id } }, blob);
-        remoteImgs.set(id, f.id);
-      }
+      if (blob) { await call("put", { name: `img-${id}`, mime: blob.type || "image/webp", data: await blobToB64(blob) }); remoteImgs.add(id); }
     } else if (!local && remoteImgs.has(id)) {
       setStatus("syncing", `Downloading photos ${n}/${needed.size}`);
-      const blob = await (await api(`${API}/files/${remoteImgs.get(id)}?alt=media`)).blob();
-      await putImage(blob, id);
+      const r = await call<{ data?: string; mime?: string; missing?: boolean }>("get", { name: `img-${id}` });
+      if (r.data) await putImage(b64ToBlob(r.data, r.mime || "image/webp"), id);
     }
   }
 
   // Save the merged data to Drive, then locally.
-  const json = new Blob([JSON.stringify(merged)], { type: "application/json" });
-  if (dataFile) await updateFile(dataFile.id, json);
-  else await createFile({ name: DATA, parents: [folder] }, json);
+  await call("put", { name: DATA, text: JSON.stringify(merged) });
   // Re-merge with anything edited on this device while we were syncing (newer edits win; the next sync uploads them).
   const now = getState();
   const final = {
@@ -229,17 +229,10 @@ async function doSync() {
   if (localKey !== finalKey) await replaceData(final);
 
   // Tidy: remove photos no longer used by any piece.
-  for (const [id, fileId] of remoteImgs) if (!needed.has(id)) await api(`${API}/files/${fileId}`, { method: "DELETE" }).catch(() => {});
+  for (const id of remoteImgs) if (!needed.has(id)) await call("delete", { name: `img-${id}` }).catch(() => {});
 
   await saveSettings({ lastSync: Date.now() });
   setStatus("idle");
-}
-
-/** Connect from a tap: sign in, then do a first full sync (merging anything already in Drive). */
-export async function connectDrive() {
-  await signIn();
-  await saveSettings({ driveConnected: true });
-  await syncNow();
 }
 
 // ---------- Background sync ----------
@@ -248,25 +241,17 @@ let started = false;
 export function startAutoSync() {
   if (started) return;
   started = true;
-  const s = getState().settings;
-  if (s.driveClientId) prepareDrive().catch(() => {});
-  if (!s.driveConnected) setStatus("off");
-  else if (tokenValid()) void syncNow();
-  else setStatus("needs-auth", "Tap to sync with Google Drive");
+  if (getState().settings.driveConnected && connection()) void syncNow();
+  else setStatus("off");
   onDataChange(() => {
     if (!getState().settings.driveConnected) return;
-    if (!tokenValid()) { setStatus("needs-auth", "Changes not backed up yet — tap to sync"); return; }
     clearTimeout(timer);
     timer = window.setTimeout(() => void syncNow(), 3000);
   });
   // Pick up changes from other devices when coming back to the app.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && getState().settings.driveConnected && tokenValid()) void syncNow();
+    if (document.visibilityState === "visible" && getState().settings.driveConnected) void syncNow();
   });
 }
 
-/** From a tap on the sync indicator: reconnect if needed, then sync. */
-export async function tapSync() {
-  if (!tokenValid()) await signIn();
-  await syncNow();
-}
+export const tapSync = () => syncNow();
