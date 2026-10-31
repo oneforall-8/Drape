@@ -238,6 +238,7 @@ export interface Tags {
   brand: string;
   searchQuery: string;
   isClothing: boolean;
+  uprightRotation: number; // clockwise degrees (0/90/180/270) to make the garment upright
 }
 
 function cleanTags<T extends Partial<Tags>>(t: T): T & Tags {
@@ -256,16 +257,17 @@ function cleanTags<T extends Partial<Tags>>(t: T): T & Tags {
     warmth: clamp(t.warmth as number),
     brand: String(t.brand || ""),
     searchQuery: String(t.searchQuery || ""),
+    uprightRotation: [0, 90, 180, 270].includes(Number(t.uprightRotation)) ? Number(t.uprightRotation) : 0,
   };
 }
 
-const TAG_KEYS = `{"isClothing":true,"name":"short shop-style name e.g. Oversized white oxford shirt","category":"${CATEGORIES.join("|")}","subcategory":"e.g. T-shirt, Jeans, Blazer, Sneakers","colors":["1-3 main garment colours as hex, most dominant first"],"pattern":"${PATTERNS.join("|")}","material":"","seasons":["${SEASONS.join("|")}"],"occasions":["${OCCASIONS.join("|")}"],"formality":"1 very casual … 5 formal","warmth":"1 very light … 5 very warm","brand":"only if a logo/label is clearly visible, else empty","searchQuery":"best web search query to find this exact product"}`;
+const TAG_KEYS = `{"isClothing":true,"name":"short shop-style name e.g. Oversized white oxford shirt","category":"${CATEGORIES.join("|")}","subcategory":"e.g. T-shirt, Jeans, Blazer, Sneakers","colors":["1-3 main garment colours as hex, most dominant first"],"pattern":"${PATTERNS.join("|")}","material":"","seasons":["${SEASONS.join("|")}"],"occasions":["${OCCASIONS.join("|")}"],"formality":"1 very casual … 5 formal","warmth":"1 very light … 5 very warm","brand":"only if a logo/label is clearly visible, else empty","searchQuery":"best web search query to find this exact product","uprightRotation":"0|90|180|270 — degrees to rotate the photo CLOCKWISE so the garment is upright (collar, neckline or waistband at the top). 0 if already upright"}`;
 const TAG_SYSTEM = "You catalogue clothing for a personal digital wardrobe app. Describe only the main garment in the photo. If several garments are visible, pick the most prominent one.";
 
 const TAG_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["isClothing", "name", "category", "subcategory", "colors", "pattern", "material", "seasons", "occasions", "formality", "warmth", "brand", "searchQuery"],
+  required: ["isClothing", "name", "category", "subcategory", "colors", "pattern", "material", "seasons", "occasions", "formality", "warmth", "brand", "searchQuery", "uprightRotation"],
   properties: {
     isClothing: { type: "boolean" },
     name: { type: "string", description: "Short shop-style name, e.g. 'Oversized white oxford shirt'" },
@@ -280,6 +282,7 @@ const TAG_SCHEMA = {
     warmth: { type: "integer", description: "1 very light (tank, linen) … 5 very warm (wool coat, puffer)" },
     brand: { type: "string", description: "Only if a logo/label is clearly visible, else empty" },
     searchQuery: { type: "string", description: "Best web search query to find this exact product online" },
+    uprightRotation: { type: "integer", enum: [0, 90, 180, 270], description: "Degrees to rotate the photo clockwise so the garment is upright (collar/neckline/waistband at the top); 0 if already upright" },
   },
 };
 
@@ -472,4 +475,65 @@ export function pickFree(models: ModelInfo[]) {
   const vis = free.filter((m) => m.vision).sort((a, b) => rank(a, [/gemini/, /qwen.*vl|qwen3/, /gemma-4|gemma-3/, /llama-4/, /mistral-small/, /nemotron.*vl/]) - rank(b, [/gemini/, /qwen.*vl|qwen3/, /gemma-4|gemma-3/, /llama-4/, /mistral-small/, /nemotron.*vl/]));
   const txt = [...free].sort((a, b) => rank(a, [/kimi/, /deepseek/, /qwen/, /llama/, /gemma/]) - rank(b, [/kimi/, /deepseek/, /qwen/, /llama/, /gemma/]));
   return { vision: vis[0]?.id, text: txt[0]?.id, free };
+}
+
+// =====================================================================
+// Orientation only (cheap): used when tidying existing photos
+// =====================================================================
+export async function uprightRotation(img: Blob): Promise<number> {
+  const ask = 'Look at the garment. How many degrees must this photo be rotated CLOCKWISE so the garment is upright (collar, neckline or waistband at the top)? Reply with ONLY a JSON object: {"uprightRotation": 0 | 90 | 180 | 270}';
+  let text: string;
+  if (provider() === "claude") {
+    const { data, mediaType } = await blobToBase64(img);
+    text = await claudeRun({ system: "You check photo orientation.", messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: mediaType as "image/png", data } }, { type: "text", text: ask }] }], effort: "low", maxTokens: 2000 });
+  } else {
+    text = await oaiChat([{ role: "user", content: [{ type: "image_url", image_url: { url: await imageDataUrl(img) } }, { type: "text", text: ask }] }], "vision");
+  }
+  const r = Number(parseJson<{ uprightRotation: number }>(text).uprightRotation);
+  return [90, 180, 270].includes(r) ? r : 0;
+}
+
+// =====================================================================
+// AI re-shoot (paid on Google): regenerate the photo as a pressed, straight product flat-lay
+// =====================================================================
+const RESHOOT_PROMPT = "Turn this photo into a clean e-commerce flat-lay product photo of the SAME garment: neatly pressed with no wrinkles or creases, laid perfectly straight and upright (waistband or collar at the top), symmetrical and centred, on a plain pure white background, soft even studio light, true-to-life colour. Keep the exact garment: same colour, fabric, texture, cut, length, pockets, seams, buttons and any logos. Do not add or remove details. No hanger, no person, no props.";
+const IMAGE_MODELS = ["gemini-2.5-flash-image", "gemini-3.1-flash-image"];
+
+export async function reshoot(img: Blob): Promise<Blob> {
+  const s = getState().settings;
+  const key = s.keys?.gemini;
+  if (!key) throw new AIError("AI re-shoot uses Google Gemini. Add a Gemini key in Settings › AI.");
+  const { data, mediaType } = await blobToBase64(img);
+  let lastErr = "";
+  for (const model of IMAGE_MODELS) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        contents: [{ parts: [{ inline_data: { mime_type: mediaType, data } }, { text: RESHOOT_PROMPT }] }],
+        generationConfig: { responseModalities: ["IMAGE"] },
+      }),
+    }).catch(() => null);
+    if (!r) throw new AIError("Couldn't reach Google. Check your connection.");
+    const j = await r.json().catch(() => null);
+    if (r.ok) {
+      const parts = j?.candidates?.[0]?.content?.parts || [];
+      const p = parts.find((x: any) => x.inlineData || x.inline_data);
+      const d = p?.inlineData || p?.inline_data;
+      if (d?.data) {
+        const bin = atob(d.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Blob([bytes], { type: d.mimeType || d.mime_type || "image/png" });
+      }
+      lastErr = "Google didn't return an image. Try again.";
+      continue;
+    }
+    const msg: string = (Array.isArray(j) ? j[0]?.error?.message : j?.error?.message) || "";
+    if (r.status === 429 && /limit: 0/.test(msg)) throw new AIError("Google's free tier doesn't include photo editing. To use AI re-shoot, turn on billing for your Google AI Studio project (about 3p per photo). The free tidy-up still works.");
+    if (r.status === 429) throw new AIError("Google's image limit was reached — try again in a minute.");
+    lastErr = msg || `Google error ${r.status}`;
+    if (r.status !== 404) break;
+  }
+  throw new AIError(lastErr || "AI re-shoot failed.");
 }

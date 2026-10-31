@@ -1,4 +1,4 @@
-import { Archive, Check, Heart, ImagePlus, RefreshCw, Scissors, Search, ShoppingBag, Sparkles, Trash2, Undo2, Wand2 } from "lucide-react";
+import { Archive, Check, Heart, ImagePlus, RefreshCw, RotateCcw, RotateCw, Scissors, Search, ShoppingBag, Sparkles, Trash2, Undo2, Wand2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chips, ItemImg, Modal, Scale, Spinner, label } from "../components/ui";
 import { canSearchWeb, hasAI, searchQueryFor, type ProductMatch } from "../lib/ai";
@@ -7,7 +7,7 @@ import { deleteItem, getImageBlob, putImage, saveDay, saveItem } from "../lib/db
 import { go, money, todayKey, toast, useNumbers, useStore, useWear } from "../lib/hooks";
 import { isImageUrl, prepareImage } from "../lib/image";
 import { readPage, searchLinks } from "../lib/web";
-import { aiRetag, applyProductImage, findCleanPhoto, recut } from "../lib/pipeline";
+import { aiRetag, applyProductImage, findCleanPhoto, recut, reshootPiece, rotatePiece, tidyPiece } from "../lib/pipeline";
 import { pairingCount } from "../lib/rules";
 import { CATEGORIES, CATEGORY_LABEL, OCCASIONS, OCCASION_LABEL, PATTERNS, SEASONS, SUBCATEGORIES, type Item } from "../lib/types";
 
@@ -85,6 +85,22 @@ export default function ItemPage({ id }: { id?: string }) {
             )}
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && replacePhoto(e.target.files[0])} />
           </div>
+          {stored.imageId && (
+            <div className="row" style={{ justifyContent: "center", marginTop: 8 }}>
+              <button className="iconbtn" title="Turn left" aria-label="Turn left" disabled={!!busy} onClick={() => run("Turning…", async () => { await rotatePiece(stored, -90); })}><RotateCcw size={18} /></button>
+              <button className="iconbtn" title="Turn right" aria-label="Turn right" disabled={!!busy} onClick={() => run("Turning…", async () => { await rotatePiece(stored, 90); })}><RotateCw size={18} /></button>
+              <button className="btn sm ghost" title="Tilt left a little" disabled={!!busy} onClick={() => run("Tilting…", async () => { await rotatePiece(stored, -3); })}>tilt ↺</button>
+              <button className="btn sm ghost" title="Tilt right a little" disabled={!!busy} onClick={() => run("Tilting…", async () => { await rotatePiece(stored, 3); })}>tilt ↻</button>
+              <button className="btn sm" disabled={!!busy} onClick={() => run("Tidying…", async () => {
+                const r = await tidyPiece(stored);
+                toast(r.changed.length ? r.changed.join(", ").replace(/^./, (c) => c.toUpperCase()) : "Already looks tidy");
+              })}><Wand2 size={14} /> tidy up</button>
+              <button className="btn sm ghost" title="Paid: about 3p per photo with Google billing on" disabled={!!busy} onClick={() => run("Re-shooting with AI (takes ~15s)…", async () => {
+                await reshootPiece(stored, (m) => setBusy(m));
+                toast("Re-shot — tap “original” to undo");
+              })}><Sparkles size={14} /> AI re-shoot</button>
+            </div>
+          )}
           {err && <p className="notice err" style={{ marginTop: 12 }}>{err}</p>}
         </div>
 

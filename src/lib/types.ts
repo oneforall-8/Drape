@@ -113,6 +113,7 @@ export interface Settings {
   customBase?: string;
   model: string; // Claude model
   autoRemoveBg: boolean;
+  autoTidy?: boolean; // straighten, soften creases and even out colour (on-device)
   autoTag: boolean;
   location?: { name: string; lat: number; lon: number };
   units: "c" | "f";
@@ -135,6 +136,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   model: "claude-opus-5-5",
   autoRemoveBg: true,
+  autoTidy: true,
   autoTag: true,
   units: "c",
   currency: "₹",

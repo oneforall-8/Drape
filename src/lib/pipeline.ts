@@ -1,5 +1,6 @@
 // Turning photos and links into wardrobe items.
-import { findProduct, hasAI, importFromLink, tagPhoto, type Tags } from "./ai";
+import { findProduct, hasAI, importFromLink, reshoot, tagPhoto, uprightRotation, type Tags } from "./ai";
+import { rotateBlob, tidy } from "./tidy";
 import { colorName, extractColors } from "./colors";
 import { getImageBlob, getState, putImage, saveItem, uid } from "./db";
 import { fetchImageBlob, isImageUrl, prepareImage, removeBackground } from "./image";
@@ -69,8 +70,20 @@ export async function ingestPhoto(file: Blob, opts: { category?: Category; statu
     item = applyTags(item, tags);
     if (tags.searchQuery) item.notes = undefined;
   }
-  if (!item.colors.length) { try { item.colors = await extractColors(prepared); } catch { /* ignore */ } }
   if (opts.category && !tags) item.category = opts.category;
+  // Tidy the cut-out: upright, straight, fewer creases, cleaner colour (on-device, free).
+  if (settings.autoTidy !== false) {
+    try {
+      step("Straightening and smoothing…");
+      const src = (await getImageBlob(item.imageId!))!;
+      const t = await tidy(src, { category: item.category, rotation: tags?.uprightRotation });
+      if (t.changed.length) {
+        item.imageId = await putImage(t.blob);
+        if (cutOK) item.colors = await extractColors(t.blob).catch(() => item.colors);
+      }
+    } catch (e) { console.warn("tidy failed", e); }
+  }
+  if (!item.colors.length) { try { item.colors = await extractColors(prepared); } catch { /* ignore */ } }
   if (!item.name) item.name = fallbackName(item);
   item.name = item.name.charAt(0).toUpperCase() + item.name.slice(1);
   await saveItem(item);
@@ -127,7 +140,8 @@ export async function ingestLink(url: string, opts: { status: ItemStatus; catego
 export async function recut(item: Item, step: Step = () => {}) {
   const src = item.originalImageId ? await getImageBlob(item.originalImageId) : item.imageId ? await getImageBlob(item.imageId) : null;
   if (!src) throw new Error("No local photo to cut out.");
-  const cut = await removeBackground(src, step);
+  let cut = await removeBackground(src, step);
+  if (getState().settings.autoTidy !== false) cut = (await tidy(cut, { category: item.category }).catch(() => ({ blob: cut }))).blob;
   const imageId = await putImage(cut);
   const colors = await extractColors(cut).catch(() => item.colors);
   const next = { ...item, imageId, originalImageId: item.originalImageId || item.imageId, colors: colors.length ? colors : item.colors };
@@ -170,4 +184,41 @@ export async function aiRetag(item: Item) {
   const next = applyTags({ ...item, colors: item.colors }, t);
   await saveItem(next);
   return next;
+}
+
+// ---------- Photo fixes on existing pieces ----------
+async function currentBlob(item: Item) {
+  const b = item.imageId ? await getImageBlob(item.imageId) : null;
+  if (!b) throw new Error("This piece has no local photo to edit.");
+  return b;
+}
+async function replacePhoto(item: Item, blob: Blob) {
+  const next = { ...item, imageId: await putImage(blob), originalImageId: item.originalImageId || item.imageId, imageUrl: undefined };
+  await saveItem(next);
+  return next;
+}
+
+/** Turn the photo by a quarter turn or a small tilt (degrees clockwise). */
+export async function rotatePiece(item: Item, deg: number) {
+  return replacePhoto(item, await rotateBlob(await currentBlob(item), deg));
+}
+
+/** Upright (AI if available), straighten, soften creases and fix colour. */
+export async function tidyPiece(item: Item, opts: { askAI?: boolean } = {}) {
+  const src = await currentBlob(item);
+  let rotation: number | undefined;
+  if (opts.askAI !== false && hasAI()) rotation = await uprightRotation(src).catch(() => undefined);
+  const t = await tidy(src, { category: item.category, rotation });
+  if (!t.changed.length) return { item, changed: t.changed };
+  return { item: await replacePhoto(item, t.blob), changed: t.changed };
+}
+
+/** Paid AI re-shoot: a pressed, straight product photo of the same garment, then cut out. */
+export async function reshootPiece(item: Item, step: Step = () => {}) {
+  step("Re-shooting with AI…");
+  const src = (item.originalImageId && (await getImageBlob(item.originalImageId))) || (await currentBlob(item));
+  const fresh = await reshoot(src);
+  let out: Blob = fresh;
+  try { out = await removeBackground(fresh, step); } catch { /* white background is fine too */ }
+  return replacePhoto(item, out);
 }

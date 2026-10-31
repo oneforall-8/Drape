@@ -7,6 +7,7 @@ import { deleteItem, exportBackup, importBackup, saveSettings, wipeAll } from ".
 import { toast, useStore } from "../lib/hooks";
 import { loadSampleWardrobe } from "../lib/sample";
 import { locateMe, searchPlaces } from "../lib/weather";
+import { tidyPiece } from "../lib/pipeline";
 import { appsScript, clearImportFolder, connect, disconnect, newToken, onSyncStatus, SCRIPT_VERSION, setImportFolder, syncLink, syncNow, syncStatus } from "../lib/drive";
 import { useEffect, useSyncExternalStore } from "react";
 
@@ -47,6 +48,8 @@ export default function SettingsPage() {
       <section className="section stack">
         <h2 className="h3">Photos</h2>
         <Toggle on={settings.autoRemoveBg} onChange={(v) => saveSettings({ autoRemoveBg: v })} label="Cut out backgrounds automatically" hint="Runs on your device — free and private. First use downloads a ~40 MB model." />
+        <Toggle on={settings.autoTidy !== false} onChange={(v) => saveSettings({ autoTidy: v })} label="Tidy photos automatically" hint="Turns sideways photos upright, straightens tilted pieces, softens creases and evens out colour. Free, on your device." />
+        <TidyAll />
       </section>
 
       <AISettings />
@@ -315,5 +318,27 @@ function DriveSettings() {
       )}
       {err && <p className="notice err small" style={{ margin: 0 }}>{err}</p>}
     </section>
+  );
+}
+
+function TidyAll() {
+  const { items } = useStore();
+  const [prog, setProg] = useState<string | null>(null);
+  const pieces = items.filter((i) => i.imageId && !i.sample);
+  if (!pieces.length) return null;
+  const runAll = async () => {
+    let changed = 0;
+    for (let i = 0; i < pieces.length; i++) {
+      setProg(`Tidying ${i + 1} of ${pieces.length}…`);
+      try { const r = await tidyPiece(pieces[i]); if (r.changed.length) changed++; } catch (e) { console.warn(e); }
+    }
+    setProg(null);
+    toast(`Tidied ${changed} of ${pieces.length} pieces — open any piece and tap “original” to undo`);
+  };
+  return (
+    <div className="row">
+      <button className="btn sm" disabled={!!prog} onClick={runAll}>{prog || `tidy all my pieces (${pieces.length})`}</button>
+      <span className="muted small">Fixes photos you've already added.</span>
+    </div>
   );
 }
