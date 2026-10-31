@@ -222,7 +222,8 @@ a.hero-slot:hover .hero-img { transform: translateY(-4px) scale(1.04) !important
 @media (prefers-reduced-motion: reduce) { .hero-slot .hero-img, .piece .img-wrap { transition: none; } }
 
 /* ---------- Outfit board ---------- */
-.board { position: relative; width: 100%; aspect-ratio: 4 / 5; touch-action: none; user-select: none; }
+/* isolation keeps each look's pieces in their own layer, so they never draw over the menu bar or pop-ups */
+.board { position: relative; isolation: isolate; width: 100%; aspect-ratio: 4 / 5; touch-action: none; user-select: none; }
 .board .slot { position: absolute; transform-origin: center; }
 .board .slot img { width: 100%; height: auto; mix-blend-mode: var(--img-blend); pointer-events: none; filter: drop-shadow(0 6px 10px rgba(0,0,0,.08)); }
 .board.edit .slot { cursor: grab; }

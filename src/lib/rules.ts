@@ -128,6 +128,9 @@ function buildPools(items: Item[], ctx: StyleContext): Pools {
   return pools;
 }
 
+/** Knitwear and sweatshirts: pieces that shouldn't be stacked on each other. */
+const isKnit = (i: Item) => /sweater|sweatshirt|cardigan|hoodie|jumper|knit|half-zip|quarter-zip/.test(sub(i) + " " + i.name.toLowerCase());
+
 /** What kind of accessory a piece is, from its type or name. */
 type AccKind = "watch" | "belt" | "hat" | "warm" | "sun" | "other";
 function accKind(i: Item): AccKind {
@@ -242,7 +245,12 @@ export function suggest(all: Item[], ctx: StyleContext, count = 4): Suggestion[]
       if (roleOf(top.item) === "top" && (lockedMid || (cold && r() < 0.6))) { const m = lockOr("mid"); if (m) parts.push(m); }
     }
     const needOuter = lockedRoles.has("outer") || (temp !== undefined ? temp < 15 || !!ctx.wet || (temp < 19 && r() < 0.45) : r() < 0.25);
-    if (needOuter) { const o = lockOr("outer"); if (o) parts.push(o); }
+    if (needOuter) {
+      // A cardigan or knit over another knit or a sweatshirt looks bulky: it goes over a shirt, tee or polo shirt.
+      const knitUnder = parts.some((p) => p.item.category === "top" && isKnit(p.item));
+      const o = lockedRoles.get("outer") ? lockOr("outer") : pick(pools.outer?.filter((x) => !(knitUnder && isKnit(x.item))), r);
+      if (o) parts.push(o);
+    }
     const shoes = lockOr("shoes"); if (shoes) parts.push(shoes);
     if (lockedRoles.has("bag") || r() < 0.55) { const b = lockOr("bag"); if (b) parts.push(b); }
 
