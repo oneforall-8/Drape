@@ -111,6 +111,7 @@ export interface Settings {
   keys?: Partial<Record<Provider, string>>; // keys for the other providers
   models?: Partial<Record<Provider, { vision?: string; text?: string }>>;
   customBase?: string;
+  reshootKey?: string; // optional Gemini key from a paid (billing-enabled) project, used only for AI re-shoot
   model: string; // Claude model
   autoRemoveBg: boolean;
   autoTidy?: boolean; // straighten, soften creases and even out colour (on-device)

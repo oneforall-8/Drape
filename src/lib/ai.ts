@@ -501,8 +501,8 @@ const IMAGE_MODELS = ["gemini-2.5-flash-image", "gemini-3.1-flash-image"];
 
 export async function reshoot(img: Blob): Promise<Blob> {
   const s = getState().settings;
-  const key = s.keys?.gemini;
-  if (!key) throw new AIError("AI re-shoot uses Google Gemini. Add a Gemini key in Settings › AI.");
+  const key = s.reshootKey || s.keys?.gemini;
+  if (!key) throw new AIError("AI re-shoot uses Google Gemini. Add your paid re-shoot key in Settings › Photos.");
   const { data, mediaType } = await blobToBase64(img);
   let lastErr = "";
   for (const model of IMAGE_MODELS) {
@@ -530,7 +530,7 @@ export async function reshoot(img: Blob): Promise<Blob> {
       continue;
     }
     const msg: string = (Array.isArray(j) ? j[0]?.error?.message : j?.error?.message) || "";
-    if (r.status === 429 && /limit: 0/.test(msg)) throw new AIError("Google's free tier doesn't include photo editing. To use AI re-shoot, turn on billing for your Google AI Studio project (about 3p per photo). The free tidy-up still works.");
+    if (r.status === 429 && /limit: 0/.test(msg)) throw new AIError("This key is on Google's free tier, which doesn't include photo editing. Turn on billing for its project in Google AI Studio (about 3p per photo), or paste a key from a paid project in Settings › Photos. The free tidy-up still works.");
     if (r.status === 429) throw new AIError("Google's image limit was reached — try again in a minute.");
     lastErr = msg || `Google error ${r.status}`;
     if (r.status !== 404) break;

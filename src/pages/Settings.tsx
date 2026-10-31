@@ -7,7 +7,7 @@ import { deleteItem, exportBackup, importBackup, saveSettings, wipeAll } from ".
 import { toast, useStore } from "../lib/hooks";
 import { loadSampleWardrobe } from "../lib/sample";
 import { locateMe, searchPlaces } from "../lib/weather";
-import { tidyPiece } from "../lib/pipeline";
+import { reshootPiece, tidyPiece } from "../lib/pipeline";
 import { appsScript, clearImportFolder, connect, disconnect, newToken, onSyncStatus, SCRIPT_VERSION, setImportFolder, syncLink, syncNow, syncStatus } from "../lib/drive";
 import { useEffect, useSyncExternalStore } from "react";
 
@@ -50,6 +50,7 @@ export default function SettingsPage() {
         <Toggle on={settings.autoRemoveBg} onChange={(v) => saveSettings({ autoRemoveBg: v })} label="Cut out backgrounds automatically" hint="Runs on your device — free and private. First use downloads a ~40 MB model." />
         <Toggle on={settings.autoTidy !== false} onChange={(v) => saveSettings({ autoTidy: v })} label="Tidy photos automatically" hint="Turns sideways photos upright, straightens tilted pieces, softens creases and evens out colour. Free, on your device." />
         <TidyAll />
+        <Reshoot />
       </section>
 
       <AISettings />
@@ -339,6 +340,51 @@ function TidyAll() {
     <div className="row">
       <button className="btn sm" disabled={!!prog} onClick={runAll}>{prog || `tidy all my pieces (${pieces.length})`}</button>
       <span className="muted small">Fixes photos you've already added.</span>
+    </div>
+  );
+}
+
+function Reshoot() {
+  const { items, settings } = useStore();
+  const [key, setKey] = useState(settings.reshootKey || "");
+  const [prog, setProg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const pieces = items.filter((i) => i.imageId && !i.sample && i.status !== "archived");
+  const runAll = async () => {
+    if (!confirm(`Re-shoot ${pieces.length} pieces with AI? This costs about 3p each on Google (roughly £${Math.max(0.01, pieces.length * 0.03).toFixed(2)} in total). Each piece keeps its original photo, so you can undo.`)) return;
+    setErr(null);
+    let done = 0;
+    for (let i = 0; i < pieces.length; i++) {
+      setProg(`Re-shooting ${i + 1} of ${pieces.length}…`);
+      try { await reshootPiece(pieces[i]); done++; }
+      catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // Stop on billing or quota problems; skip single bad photos.
+        if (/free tier|billing|limit|key/i.test(msg)) { setErr(msg); break; }
+        console.warn(e);
+      }
+    }
+    setProg(null);
+    toast(`Re-shot ${done} piece${done === 1 ? "" : "s"} — open any piece and tap “original” to undo`);
+  };
+  return (
+    <div className="stack" style={{ gap: 8, marginTop: 6 }}>
+      <h3 className="small" style={{ margin: 0, fontWeight: 600 }}>AI re-shoot (paid, optional)</h3>
+      <p className="small" style={{ margin: 0, color: "var(--ink-2)" }}>
+        Google's image AI recreates each piece as a pressed, straight product photo on white. About 3p per photo on Google's paid tier.
+        Paste a key from a Google project with billing on. Leave empty to use your main Gemini key.
+      </p>
+      <div className="row" style={{ flexWrap: "nowrap" }}>
+        <input className="input" type="password" placeholder="paid Gemini key (optional)" value={key} autoComplete="off" spellCheck={false} onChange={(e) => setKey(e.target.value)} />
+        <button className="btn sm" onClick={async () => { await saveSettings({ reshootKey: key.trim() || undefined }); toast(key.trim() ? "Re-shoot key saved" : "Re-shoot key removed"); }}>save</button>
+      </div>
+      {pieces.length > 0 && (
+        <div className="row">
+          <button className="btn sm solid" disabled={!!prog || !(settings.reshootKey || settings.keys?.gemini)} onClick={runAll}>{prog || `re-shoot all my pieces (${pieces.length})`}</button>
+          <span className="muted small">≈ £{(pieces.length * 0.03).toFixed(2)} one-off</span>
+        </div>
+      )}
+      {err && <p className="notice err small" style={{ margin: 0 }}>{err}</p>}
     </div>
   );
 }
