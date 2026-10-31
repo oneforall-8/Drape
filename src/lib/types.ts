@@ -121,6 +121,11 @@ export interface Settings {
   syncUrl?: string; // Google Apps Script web app link
   syncToken?: string; // private key baked into the user's copy of the script
   syncFolderUrl?: string;
+  syncScriptVersion?: number;
+  importFolderId?: string; // extra Drive folder to pull clothing photos from
+  importFolderName?: string;
+  driveImported?: string[]; // Drive file ids already turned into pieces
+  lastImport?: { at: number; added: number; failed: number };
   driveConnected?: boolean;
   lastSync?: number;
   theme: "system" | "light" | "dark";

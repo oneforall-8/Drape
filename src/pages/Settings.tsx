@@ -7,7 +7,7 @@ import { deleteItem, exportBackup, importBackup, saveSettings, wipeAll } from ".
 import { toast, useStore } from "../lib/hooks";
 import { loadSampleWardrobe } from "../lib/sample";
 import { locateMe, searchPlaces } from "../lib/weather";
-import { appsScript, connect, disconnect, newToken, onSyncStatus, syncLink, syncNow, syncStatus } from "../lib/drive";
+import { appsScript, clearImportFolder, connect, disconnect, newToken, onSyncStatus, SCRIPT_VERSION, setImportFolder, syncLink, syncNow, syncStatus } from "../lib/drive";
 import { useEffect, useSyncExternalStore } from "react";
 
 export default function SettingsPage() {
@@ -213,6 +213,7 @@ function DriveSettings() {
   const { settings } = useStore();
   const st = useSyncExternalStore(onSyncStatus, syncStatus, syncStatus);
   const [link, setLink] = useState("");
+  const [folderLink, setFolderLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -254,6 +255,35 @@ function DriveSettings() {
             <button className="btn sm solid" disabled={busy || st.state === "syncing"} onClick={() => go(() => syncNow())}>sync now</button>
             <button className="btn sm ghost" disabled={busy} onClick={() => go(() => disconnect())}>disconnect this device</button>
           </div>
+          {(settings.syncScriptVersion || 1) < SCRIPT_VERSION ? (
+            <div className="notice small" style={{ margin: 0 }}>
+              <b>Update your Drive script</b> to let Drape pick up clothing photos you add to Drive (takes a minute, your link stays the same):
+              <ol style={{ margin: "8px 0 0", paddingLeft: 20, display: "grid", gap: 6 }}>
+                <li><button className="btn sm solid" onClick={() => copy(script, "script", scriptBox)}>{copied === "script" ? "copied ✓" : "copy my script"}</button>
+                  <textarea ref={(el) => { scriptBox = el; }} readOnly value={script} className="visually-hidden" aria-hidden tabIndex={-1} /></li>
+                <li>Open your project on <a href="https://script.google.com/home" target="_blank" rel="noreferrer">script.google.com</a>, replace all the code with the copy, and press <b>Save</b>.</li>
+                <li><b>Deploy → Manage deployments</b> → the pencil ✏️ → <b>Version: New version</b> → <b>Deploy</b>. If Google asks for permission again, allow it.</li>
+                <li>Come back and tap <b>sync now</b>.</li>
+              </ol>
+            </div>
+          ) : (
+            <div className="stack" style={{ gap: 8 }}>
+              <h3 className="small" style={{ margin: "6px 0 0", fontWeight: 600 }}>Add clothes straight from Drive</h3>
+              <p className="small" style={{ margin: 0, color: "var(--ink-2)" }}>
+                Drop clothing photos into your {settings.syncFolderUrl ? <a href={settings.syncFolderUrl} target="_blank" rel="noreferrer">Drape wardrobe folder</a> : "Drape wardrobe folder"}
+                {settings.importFolderName ? <> or <b>{settings.importFolderName}</b></> : null} — each sync turns new photos into pieces (cut out and tagged, like an upload). Your photos in Drive are left as they are.
+              </p>
+              {settings.lastImport && <p className="muted small" style={{ margin: 0 }}>Last import: {settings.lastImport.added} added{settings.lastImport.failed ? `, ${settings.lastImport.failed} couldn't be read` : ""} · {new Date(settings.lastImport.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</p>}
+              {settings.importFolderId ? (
+                <div className="row"><span className="small">Also watching: <b>{settings.importFolderName}</b></span><button className="link small" onClick={() => clearImportFolder()}>stop</button></div>
+              ) : (
+                <div className="row" style={{ flexWrap: "nowrap" }}>
+                  <input className="input small" placeholder="Another folder? Paste its Drive link" value={folderLink} onChange={(e) => setFolderLink(e.target.value)} spellCheck={false} />
+                  <button className="btn sm" disabled={busy || !folderLink.trim()} onClick={() => go(async () => { const n = await setImportFolder(folderLink); setFolderLink(""); toast(`Found ${n} photo${n === 1 ? "" : "s"} — adding them now`); })}>use folder</button>
+                </div>
+              )}
+            </div>
+          )}
           <label className="field"><span>sync link for your other devices — paste it there under Settings › Google Drive sync. Keep it private: anyone with it can see your wardrobe.</span>
             <textarea ref={(el) => { linkBox = el; }} className="textarea small" readOnly rows={2} value={syncLink()} style={{ fontFamily: "monospace", fontSize: 12 }} />
           </label>

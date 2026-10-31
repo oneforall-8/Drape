@@ -9,9 +9,11 @@
 // Each record has an updatedAt time; when two devices disagree, the newer edit wins.
 
 import { getImageBlob, getState, getTombstones, hasImage, onDataChange, putImage, replaceData, saveSettings, type Tombstones } from "./db";
+import { ingestPhoto } from "./pipeline";
 import type { DayEntry, Item, Outfit } from "./types";
 
 const DATA = "drape-data.json";
+export const SCRIPT_VERSION = 2;
 
 export type SyncState = "off" | "idle" | "syncing" | "error";
 let status: { state: SyncState; msg?: string } = { state: "off" };
@@ -33,6 +35,7 @@ export function appsScript(token: string) {
 // The token below is your private key. Don't share this script or its link.
 const TOKEN = '${token}';
 const FOLDER = 'Drape wardrobe';
+const VERSION = ${SCRIPT_VERSION};
 
 function doGet() { return out_({ ok: true, app: 'drape' }); }
 
@@ -42,11 +45,27 @@ function doPost(e) {
     if (req.token !== TOKEN) return out_({ error: 'Wrong token — this link belongs to a different Drape setup.' });
     const folder = folder_();
     const find = function (name) { const it = folder.getFilesByName(name); return it.hasNext() ? it.next() : null; };
-    if (req.action === 'ping') return out_({ ok: true, folder: folder.getUrl() });
+    if (req.action === 'ping') return out_({ ok: true, version: VERSION, folder: folder.getUrl() });
     if (req.action === 'list') {
       const names = [], it = folder.getFiles();
       while (it.hasNext()) names.push(it.next().getName());
-      return out_({ files: names, folder: folder.getUrl() });
+      return out_({ files: names, version: VERSION, folder: folder.getUrl() });
+    }
+    if (req.action === 'inbox') {
+      // Clothing photos you added yourself (anything that isn't one of Drape's own files).
+      const src = req.folderId ? DriveApp.getFolderById(req.folderId) : folder;
+      const found = [], it = src.getFiles();
+      while (it.hasNext()) {
+        const f = it.next(), mime = f.getMimeType(), name = f.getName();
+        if (mime.indexOf('image/') === 0 && name.indexOf('img-') !== 0) found.push({ id: f.getId(), name: name, mime: mime });
+      }
+      return out_({ files: found, folderName: src.getName() });
+    }
+    if (req.action === 'getById') {
+      const f = DriveApp.getFileById(req.id);
+      const jpg = jpeg_(f);
+      const b = jpg || f.getBlob();
+      return out_({ data: Utilities.base64Encode(b.getBytes()), mime: b.getContentType(), name: f.getName() });
     }
     if (req.action === 'get') {
       const f = find(req.name);
@@ -72,6 +91,19 @@ function doPost(e) {
     return out_({ error: 'Unknown action' });
   } catch (err) {
     return out_({ error: String(err) });
+  }
+}
+
+// Drive's own resized JPEG of a photo (smaller to send, and works for iPhone HEIC photos).
+function jpeg_(file) {
+  try {
+    const auth = { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() };
+    const meta = JSON.parse(UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + file.getId() + '?fields=thumbnailLink', { headers: auth }).getContentText());
+    if (!meta.thumbnailLink) return null;
+    const r = UrlFetchApp.fetch(meta.thumbnailLink.replace(/=s\\d+$/, '=s1600'), { headers: auth, muteHttpExceptions: true });
+    return r.getResponseCode() === 200 ? r.getBlob() : null;
+  } catch (err) {
+    return null;
   }
 }
 
@@ -120,8 +152,8 @@ export async function connect(input: string, tokenIfMissing?: string) {
   if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) throw new Error("That doesn't look like an Apps Script link. It should start with https://script.google.com/macros/s/…");
   const token = hashToken || tokenIfMissing;
   if (!token) throw new Error("This link is missing its key. On your first device, copy the full sync link from Settings.");
-  const res = await call<{ ok: boolean; folder: string }>("ping", {}, { url, token });
-  await saveSettings({ syncUrl: url, syncToken: token, driveConnected: true, syncFolderUrl: res.folder });
+  const res = await call<{ ok: boolean; folder: string; version?: number }>("ping", {}, { url, token });
+  await saveSettings({ syncUrl: url, syncToken: token, driveConnected: true, syncFolderUrl: res.folder, syncScriptVersion: res.version || 1 });
   await syncNow();
 }
 
@@ -131,7 +163,7 @@ export async function disconnect() {
 }
 
 // ---------- Merge ----------
-interface Snapshot { version: 1; items: Item[]; outfits: Outfit[]; days: DayEntry[]; tombstones: Tombstones; savedAt: number }
+interface Snapshot { version: 1; items: Item[]; outfits: Outfit[]; days: DayEntry[]; tombstones: Tombstones; imported?: string[]; savedAt: number }
 
 function mergeList<T>(a: T[], b: T[], key: (x: T) => string, dead: Record<string, number>): T[] {
   const m = new Map<string, T>();
@@ -180,7 +212,8 @@ export function syncNow(): Promise<void> {
 async function doSync() {
   if (!getState().settings.driveConnected || !connection()) return;
   setStatus("syncing");
-  const { files } = await call<{ files: string[] }>("list");
+  const { files, version } = await call<{ files: string[]; version?: number }>("list");
+  if ((version || 1) !== getState().settings.syncScriptVersion) await saveSettings({ syncScriptVersion: version || 1 });
   const remoteRaw = files.includes(DATA) ? (await call<{ text?: string }>("get", { name: DATA, text: true })).text : undefined;
   let remote: Snapshot | null = null;
   try { remote = remoteRaw ? JSON.parse(remoteRaw) : null; } catch { remote = null; }
@@ -193,8 +226,10 @@ async function doSync() {
     outfits: mergeList(outfits, remote?.outfits || [], (x) => x.id, tombstones.outfits),
     days: mergeList(Object.values(days), remote?.days || [], (x) => x.date, tombstones.days),
     tombstones,
+    imported: [...new Set([...(getState().settings.driveImported || []), ...(remote?.imported || [])])],
     savedAt: Date.now(),
   };
+  if ((merged.imported?.length || 0) !== (getState().settings.driveImported?.length || 0)) await saveSettings({ driveImported: merged.imported });
 
   // Photos: upload what Drive is missing, download what this device is missing.
   const remoteImgs = new Set(files.filter((f) => f.startsWith("img-")).map((f) => f.slice(4)));
@@ -233,7 +268,64 @@ async function doSync() {
 
   await saveSettings({ lastSync: Date.now() });
   setStatus("idle");
+
+  // Then turn any clothing photos added to Drive into pieces (needs script version 2+).
+  if ((version || 1) >= 2) await importFromDrive();
 }
+
+// ---------- Photos added straight to Drive ----------
+let importing = false;
+async function importFromDrive() {
+  if (importing) return;
+  importing = true;
+  try {
+    const st = getState().settings;
+    const folders: (string | undefined)[] = [undefined];
+    if (st.importFolderId) folders.push(st.importFolderId);
+    const done = new Set(st.driveImported || []);
+    const todo: { id: string; name: string }[] = [];
+    for (const folderId of folders) {
+      const r = await call<{ files: { id: string; name: string }[] }>("inbox", folderId ? { folderId } : {});
+      for (const f of r.files) if (!done.has(f.id) && !todo.some((t) => t.id === f.id)) todo.push(f);
+    }
+    if (!todo.length) return;
+    let added = 0, failed = 0;
+    for (let i = 0; i < todo.length; i++) {
+      const f = todo[i];
+      setStatus("syncing", `Adding photos from Drive ${i + 1}/${todo.length}`);
+      try {
+        const r = await call<{ data: string; mime: string }>("getById", { id: f.id });
+        await ingestPhoto(b64ToBlob(r.data, r.mime), { status: "owned" });
+        added++;
+      } catch (e) {
+        console.warn("Couldn't import", f.name, e);
+        failed++;
+      }
+      // Remember it either way, so a photo that can't be read isn't retried forever.
+      done.add(f.id);
+      await saveSettings({ driveImported: [...done] });
+    }
+    await saveSettings({ lastImport: { at: Date.now(), added, failed } });
+    setStatus("idle", `Added ${added} piece${added === 1 ? "" : "s"} from Drive`);
+    importListeners.forEach((l) => l(added, failed));
+  } finally {
+    importing = false;
+  }
+}
+
+const importListeners = new Set<(added: number, failed: number) => void>();
+export const onDriveImport = (fn: (added: number, failed: number) => void) => { importListeners.add(fn); return () => { importListeners.delete(fn); }; };
+
+/** Accepts a Drive folder link (or bare id) to also pull photos from. */
+export async function setImportFolder(link: string) {
+  const m = link.match(/folders\/([A-Za-z0-9_-]{10,})/) || link.match(/[?&]id=([A-Za-z0-9_-]{10,})/) || link.trim().match(/^([A-Za-z0-9_-]{20,})$/);
+  if (!m) throw new Error("That doesn't look like a Google Drive folder link.");
+  const r = await call<{ files: unknown[]; folderName: string }>("inbox", { folderId: m[1] });
+  await saveSettings({ importFolderId: m[1], importFolderName: r.folderName });
+  void syncNow();
+  return r.files.length;
+}
+export const clearImportFolder = () => saveSettings({ importFolderId: undefined, importFolderName: undefined });
 
 // ---------- Background sync ----------
 let timer: number | undefined;

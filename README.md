@@ -79,6 +79,10 @@ Google Apps Script that runs in your account. No Google Cloud project or sign-in
    your own unpublished script.
 5. Paste the **Web app URL** into Drape and tap **connect**.
 
+**Adding clothes straight from Drive:** drop clothing photos into the Drape wardrobe folder (or any
+folder you link in Settings) and each sync turns them into pieces, cut out and tagged like an upload.
+Your photos in Drive are left untouched, and each photo is only imported once.
+
 On your other devices, paste the **sync link** shown in Settings (it includes your private key).
 Keep that link private: anyone with it can read and change your wardrobe.
 

@@ -247,7 +247,7 @@ export async function exportBackup(): Promise<Blob> {
     if (b) images[k] = await toDataUrl(b);
   }
   // Keys and sign-in details stay on this device only.
-  const { apiKey: _k1, keys: _k2, driveConnected: _d1, lastSync: _d2, syncUrl: _d3, syncToken: _d4, ...settings } = state.settings;
+  const { apiKey: _k1, keys: _k2, driveConnected: _d1, lastSync: _d2, syncUrl: _d3, syncToken: _d4, driveImported: _d5, ...settings } = state.settings;
   const data = { app: "drape", version: 1, exportedAt: new Date().toISOString(), items: state.items, outfits: state.outfits, days: Object.values(state.days), settings, images };
   return new Blob([JSON.stringify(data)], { type: "application/json" });
 }

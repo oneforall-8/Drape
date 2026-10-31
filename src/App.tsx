@@ -2,8 +2,8 @@ import { Plus, Settings as Gear, Sparkles } from "lucide-react";
 import { useEffect } from "react";
 import { SyncBadge } from "./components/SyncBadge";
 import { load, requestPersistence } from "./lib/db";
-import { startAutoSync } from "./lib/drive";
-import { useRoute, useStore, useToastHost } from "./lib/hooks";
+import { onDriveImport, startAutoSync } from "./lib/drive";
+import { toast, useRoute, useStore, useToastHost } from "./lib/hooks";
 import AddPage from "./pages/Add";
 import Builder from "./pages/Builder";
 import Closet from "./pages/Closet";
@@ -31,6 +31,9 @@ export default function App() {
   const toastMsg = useToastHost();
 
   useEffect(() => { load().then(() => { startAutoSync(); requestPersistence(); }); }, []);
+  useEffect(() => onDriveImport((added, failed) => {
+    if (added || failed) toast(`Added ${added} piece${added === 1 ? "" : "s"} from Google Drive${failed ? ` (${failed} photo${failed === 1 ? "" : "s"} couldn't be read)` : ""}`);
+  }), []);
   useEffect(() => {
     const el = document.documentElement;
     if (settings.theme === "system") el.removeAttribute("data-theme");
