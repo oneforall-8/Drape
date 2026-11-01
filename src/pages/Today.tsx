@@ -2,7 +2,7 @@ import { Bookmark, Check, CloudRain, Shuffle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Hero } from "../components/Hero";
 import { OutfitBoard, Spinner, label } from "../components/ui";
-import { hasAI, styleLooks, type StyledLook } from "../lib/ai";
+import { hasAI, lastAIReply, styleLooks, type StyledLook } from "../lib/ai";
 import { saveDay, saveOutfit, uid } from "../lib/db";
 import { go, todayKey, toast, useNumbers, useStore, useWear, useWeather } from "../lib/hooks";
 import { lookProblems, suggest, seasonFor, type Suggestion } from "../lib/rules";
@@ -55,6 +55,7 @@ export default function Today() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [shuffling, setShuffling] = useState<number | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
   const looksRef = useRef<HTMLDivElement>(null);
 
   // A changing selection of pieces for the hero, mixing categories so it reads like a flat-lay.
@@ -178,7 +179,12 @@ export default function Today() {
           <>
             <p className="muted small" style={{ marginTop: 0 }}>Tap a piece to lock it, then shuffle to rebuild the rest around it.</p>
             {aiBusy && <p className="muted small row" style={{ marginTop: -4 }}><Spinner /> Your stylist is putting looks together…</p>}
-            {aiNote && !aiBusy && <p className="muted small" style={{ marginTop: -4 }}>{aiNote}</p>}
+            {aiNote && !aiBusy && (
+              <p className="muted small" style={{ marginTop: -4 }}>
+                {aiNote} {lastAIReply() && <button className="link" onClick={() => setShowRaw(!showRaw)}>{showRaw ? "hide details" : "details"}</button>}
+              </p>
+            )}
+            {aiNote && !aiBusy && showRaw && <pre className="small muted" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 260, overflow: "auto", background: "var(--soft)", padding: 10 }}>{lastAIReply().slice(0, 1500)}</pre>}
             <div className="looks">
               {looks.map((s, i) => {
                 const its = s.itemIds.map((id) => owned.find((o) => o.id === id)!).filter(Boolean);

@@ -126,6 +126,47 @@ async function oaiChat(messages: OAIMessage[], kind: "vision" | "text", json = t
   return text;
 }
 
+/**
+ * Gemini's own API with a response schema: Gemini is then required to answer with JSON in exactly
+ * that shape, which is far more reliable than asking nicely through the OpenAI-compatible endpoint.
+ */
+async function geminiJson(system: string, user: string, schema: Record<string, unknown>, maxTokens = 16384): Promise<string> {
+  const key = keyFor("gemini");
+  if (!key) throw new AIError("Add your Gemini key in Settings.");
+  const model = modelsFor("gemini").text.replace(/^models\//, "");
+  let r: Response;
+  try {
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: user }] }],
+        generationConfig: { temperature: 0.4, maxOutputTokens: maxTokens, responseMimeType: "application/json", responseSchema: schema },
+      }),
+    });
+  } catch {
+    throw new AIError("Couldn't reach the AI service. Check your connection.");
+  }
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw new AIError(oaiError(r.status, data, model));
+  const cand = data?.candidates?.[0];
+  const text: string = (cand?.content?.parts || []).filter((p: { thought?: boolean }) => !p.thought).map((p: { text?: string }) => p.text || "").join("").trim();
+  const finish: string | undefined = cand?.finishReason;
+  try { sessionStorage.setItem("drape.lastAI", JSON.stringify({ model, finish, text: text.slice(0, 4000), usage: data?.usageMetadata, block: data?.promptFeedback?.blockReason })); } catch { /* ignore */ }
+  if (finish === "MAX_TOKENS") throw new AIError("The AI ran out of room before finishing its answer.");
+  if (!text) throw new AIError(finish && finish !== "STOP" ? `The AI stopped without an answer (${finish.toLowerCase()}).` : "The model returned an empty answer. Try again, or pick another model in Settings.");
+  return text;
+}
+
+/** What the AI last sent back, for the "details" link when something goes wrong. */
+export function lastAIReply(): string {
+  try {
+    const v = JSON.parse(sessionStorage.getItem("drape.lastAI") || "null");
+    return v ? `model: ${v.model} · finished: ${v.finish ?? "?"}${v.block ? ` · blocked: ${v.block}` : ""}\n\n${v.text || "(empty)"}` : "";
+  } catch { return ""; }
+}
+
 function oaiError(status: number, data: any, model: string) {
   const err = Array.isArray(data) ? data[0]?.error : data?.error;
   const msg: string = err?.message || err?.metadata?.raw || "";
@@ -223,7 +264,22 @@ function parseJson<T>(text: string): T {
   if (fenced) for (const f of fenced.reverse()) { try { return JSON.parse(f.replace(/```(?:json)?/g, "")); } catch { /* next */ } }
   const start = text.indexOf("{"), end = text.lastIndexOf("}");
   if (start >= 0 && end > start) { try { return JSON.parse(text.slice(start, end + 1)); } catch { /* fall through */ } }
+  // Each complete {...} object in turn (handles chatter after the answer, or the answer given twice).
+  for (const obj of jsonObjects(text)) { try { return JSON.parse(obj); } catch { /* next */ } }
   throw new AIError("The AI's answer couldn't be read. Try again (smaller free models sometimes slip up).");
+}
+/** Finds top-level {...} blocks by matching braces, skipping braces inside strings. */
+function jsonObjects(text: string): string[] {
+  const out: string[] = [];
+  let depth = 0, from = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === "{") { if (depth++ === 0) from = i; }
+    else if (c === "}" && depth > 0 && --depth === 0) out.push(text.slice(from, i + 1));
+  }
+  return out;
 }
 const clamp = (n: number) => Math.max(1, Math.min(5, Math.round(Number(n) || 3)));
 const oneOf = <T extends string>(v: unknown, list: readonly T[], d: T): T => (list.includes(v as T) ? (v as T) : d);
@@ -484,6 +540,23 @@ const LOOKS_SCHEMA = {
   },
 };
 
+// The same shape in the format Gemini's own API expects for structured answers.
+const GEMINI_LOOKS_SCHEMA = {
+  type: "OBJECT",
+  required: ["looks"],
+  properties: {
+    looks: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        required: ["name", "itemIds", "reasons"],
+        propertyOrdering: ["name", "itemIds", "reasons"],
+        properties: { name: { type: "STRING" }, itemIds: { type: "ARRAY", items: { type: "STRING" } }, reasons: { type: "ARRAY", items: { type: "STRING" } } },
+      },
+    },
+  },
+};
+
 /** One line per piece, with colour names so the model doesn't have to read hex codes. */
 function closetLines(items: Item[], lastWorn: Record<string, number> = {}) {
   return items.map((i) => [
@@ -507,13 +580,19 @@ export async function styleLooks(req: StyleRequest): Promise<StyledLook[]> {
     `\nUse only ids from the wardrobe. Give each look a short evocative name (2-4 words).`,
   ].filter(Boolean).join("\n");
 
+  const p = provider();
+  const viaOpenAI = () => oaiChat([
+    { role: "system", content: `${STYLE_GUIDE}\n\nReply with ONLY a compact JSON object, no markdown, no commentary: {"looks":[{"name":"","itemIds":["exact ids"],"reasons":["",""]}]}` },
+    { role: "user", content: lines },
+  ], "text", true, { maxTokens: 8192, lightThinking: true });
   const ask = async () => {
-    const text = provider() === "claude"
-      ? await claudeRun({ system: STYLE_GUIDE, messages: [{ role: "user", content: lines }], schema: LOOKS_SCHEMA, effort: "low", maxTokens: 6000 })
-      : await oaiChat([
-        { role: "system", content: `${STYLE_GUIDE}\n\nReply with ONLY a compact JSON object, no markdown, no commentary: {"looks":[{"name":"","itemIds":["exact ids"],"reasons":["",""]}]}` },
-        { role: "user", content: lines },
-      ], "text", true, { maxTokens: 8192, lightThinking: true });
+    let text: string;
+    if (p === "claude") text = await claudeRun({ system: STYLE_GUIDE, messages: [{ role: "user", content: lines }], schema: LOOKS_SCHEMA, effort: "low", maxTokens: 6000 });
+    else if (p === "gemini") {
+      // If Google rejects the structured request itself (400), fall back to the OpenAI-compatible route.
+      try { text = await geminiJson(STYLE_GUIDE, lines, GEMINI_LOOKS_SCHEMA); }
+      catch (e) { if (e instanceof AIError && /^AI error \(400\)/.test(e.message)) text = await viaOpenAI(); else throw e; }
+    } else text = await viaOpenAI();
     return parseJson<{ looks?: StyledLook[] }>(text);
   };
   let r: { looks?: StyledLook[] };
