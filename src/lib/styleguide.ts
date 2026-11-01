@@ -30,6 +30,14 @@ COLOUR AND PATTERN
 - One pattern or graphic per look. Everything else plain or subtly textured.
 - Dark bottoms ground lighter tops; light bottoms (white jeans, stone trousers) suit spring and summer.
 
+PERSONAL COLOURS (only when the request includes them)
+- Treat them as a preference, never a filter. Every piece in the wardrobe stays in rotation.
+- Put the best colours near the face: tops, knits, shirts, jackets and scarves.
+- Weaker colours work best away from the face (trousers, shoes, bags, belts) or with a best-colour piece above them.
+- A weaker-colour top is fine now and then, especially under a jacket or knit in a best colour, or when it's been a while since it was worn.
+- Prefer the suggested metal for the watch and belt buckle when there's a choice.
+- When a look uses their best colours well, say so in a reason.
+
 LEATHER AND METAL
 - Belt matches the shoes: brown or tan belt with brown or tan shoes, black with black. Sneakers can take either.
 - Watch and belt buckle ideally share a metal (silver with silver, gold with gold).

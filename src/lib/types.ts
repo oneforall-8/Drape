@@ -118,6 +118,8 @@ export interface Settings {
   autoTidy?: boolean; // straighten, soften creases and even out colour (on-device)
   autoTag: boolean;
   aiLooks?: boolean; // let the AI stylist pick today's looks (on unless turned off)
+  colorSeason?: string; // personal colour season id (see palette.ts)
+  colorNotes?: string; // anything else from their colour analysis
   location?: { name: string; lat: number; lon: number };
   units: "c" | "f";
   currency: string;

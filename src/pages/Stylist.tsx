@@ -2,6 +2,7 @@ import { ArrowUp, Bookmark } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { OutfitBoard, Spinner } from "../components/ui";
 import { askStylist, hasAI, wardrobeDigest, type StylistReply } from "../lib/ai";
+import { paletteText } from "../lib/palette";
 import { saveOutfit, uid } from "../lib/db";
 import { toast, useStore, useWear, useWeather } from "../lib/hooks";
 import { describe, fmtTemp } from "../lib/weather";
@@ -50,7 +51,8 @@ export default function Stylist() {
       content: i === next.length - 1 ? `${t.text}\n\n(Today is ${now.toDateString()}. ${weather})` : t.text + (t.outfits?.length ? `\n[Suggested outfits: ${t.outfits.map((o) => `${o.name}: ${o.itemIds.join(",")}`).join(" | ")}]` : ""),
     }));
     try {
-      const r = await askStylist(history, wardrobeDigest(items, counts));
+      const pal = paletteText(settings);
+      const r = await askStylist(history, wardrobeDigest(items, counts) + (pal ? `\n\nThe user's personal colours (a preference, not a filter: best colours near the face, the rest still worn):\n${pal}` : ""));
       const valid = r.outfits.map((o) => ({ ...o, itemIds: o.itemIds.filter((id) => items.some((i) => i.id === id)) })).filter((o) => o.itemIds.length);
       setTurns([...next, { role: "assistant", text: r.message, outfits: valid }]);
     } catch (e) {

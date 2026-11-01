@@ -5,6 +5,7 @@ import { OutfitBoard, Spinner, label } from "../components/ui";
 import { hasAI, lastAIReply, styleLooks, type StyledLook } from "../lib/ai";
 import { saveDay, saveOutfit, uid } from "../lib/db";
 import { go, todayKey, toast, useNumbers, useStore, useWear, useWeather } from "../lib/hooks";
+import { paletteText } from "../lib/palette";
 import { lookProblems, suggest, seasonFor, type Suggestion } from "../lib/rules";
 import type { Item } from "../lib/types";
 import { loadSampleWardrobe, sampleSvg } from "../lib/sample";
@@ -52,6 +53,7 @@ export default function Today() {
   const [looks, setLooks] = useState<Look[]>([]);
   const [locks, setLocks] = useState<Record<number, string[]>>({});
   const useAI = hasAI() && settings.aiLooks !== false;
+  const palette = paletteText(settings);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [shuffling, setShuffling] = useState<number | null>(null);
@@ -84,7 +86,7 @@ export default function Today() {
     setLocks({});
     setAiNote(null);
     if (!useAI || quick.length === 0) { setLooks(quick); setAiBusy(false); return; }
-    const key = `drape.looks:${todayKey()}:${ctx.occasion}:${ctx.temp === undefined ? "-" : Math.round(ctx.temp)}:${ctx.wet ? 1 : 0}:${closetSig}:${seed}`;
+    const key = `drape.looks:${todayKey()}:${ctx.occasion}:${ctx.temp === undefined ? "-" : Math.round(ctx.temp)}:${ctx.wet ? 1 : 0}:${closetSig}:${seed}:${palette.length}:${settings.colorSeason || ""}`;
     const cached = store.get<Look[]>(key);
     if (cached?.length) { setLooks(cached); setAiBusy(false); return; }
     setLooks(quick);
@@ -93,7 +95,7 @@ export default function Today() {
     let live = true;
     // Give the AI a wider spread of rule-engine ideas than we show, as a starting point.
     const ideas = suggest(owned, { ...ctx, seed: seed + 1 }, 8).map((s) => s.itemIds);
-    styleLooks({ items: owned, temp: ctx.temp, wet: ctx.wet, occasion: ctx.occasion, season: ctx.season, lastWorn: ctx.lastWorn, count: 3, ideas })
+    styleLooks({ items: owned, temp: ctx.temp, wet: ctx.wet, occasion: ctx.occasion, season: ctx.season, lastWorn: ctx.lastWorn, count: 3, ideas, palette })
       .then((res) => {
         if (!live) return;
         const good = vet(res, owned, { temp: ctx.temp });
@@ -107,7 +109,7 @@ export default function Today() {
       .finally(() => { if (live) setAiBusy(false); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [closetSig, ctx.occasion, ctx.temp, ctx.wet, seed, useAI, weatherPending]);
+  }, [closetSig, ctx.occasion, ctx.temp, ctx.wet, seed, useAI, weatherPending, palette]);
 
   const quickShuffle = (i: number): Look | undefined => {
     const locked = locks[i] || [];
@@ -124,7 +126,7 @@ export default function Today() {
       setShuffling(i);
       try {
         const ideas = suggest(owned, { ...ctx, locked, seed: Date.now() + i }, 4).map((s) => s.itemIds);
-        const res = await styleLooks({ items: owned, temp: ctx.temp, wet: ctx.wet, occasion: ctx.occasion, season: ctx.season, lastWorn: ctx.lastWorn, count: 1, locked, ideas, avoid: looks.map((l) => l.itemIds) });
+        const res = await styleLooks({ items: owned, temp: ctx.temp, wet: ctx.wet, occasion: ctx.occasion, season: ctx.season, lastWorn: ctx.lastWorn, count: 1, locked, ideas, avoid: looks.map((l) => l.itemIds), palette });
         pick = vet(res, owned, { temp: ctx.temp, locked }, looks.map((l) => l.itemIds))[0];
       } catch (e) {
         toast(`AI stylist unavailable — ${e instanceof Error ? e.message : String(e)}`);

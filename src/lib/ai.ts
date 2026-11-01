@@ -521,6 +521,7 @@ export interface StyleRequest {
   ideas?: string[][]; // looks from the rule engine, offered as a starting point
   locked?: string[]; // pieces every look must include
   avoid?: string[][]; // looks already on screen — come up with different ones
+  palette?: string; // the user's personal colours (a preference, not a filter)
 }
 
 const LOOKS_SCHEMA = {
@@ -574,6 +575,7 @@ export async function styleLooks(req: StyleRequest): Promise<StyledLook[]> {
     req.temp !== undefined ? `Weather: about ${Math.round(req.temp)}°C${req.wet ? ", wet" : ""}.` : "Weather: unknown — dress for a mild day.",
     `Make ${req.count} different look${req.count > 1 ? "s" : ""}.`,
     req.locked?.length ? `Every look must include: ${req.locked.map((id) => `${id} (${name(id)})`).join(", ")}.` : "",
+    req.palette ? `Personal colours (a preference, not a filter — see the style guide):\n${req.palette}` : "",
     req.avoid?.length ? `Already shown — make something different from these:\n${req.avoid.map((l) => "- " + l.map(name).join(" + ")).join("\n")}` : "",
     req.ideas?.length ? `Starting ideas from a simple rule engine. Use, improve or ignore them:\n${req.ideas.map((l) => "- " + l.map((id) => `${id} ${name(id)}`).join(" + ")).join("\n")}` : "",
     `\nWardrobe (id | name | category | type | colours | pattern | material | formality 1-5 | warmth 1-5 | occasions | seasons | last worn):\n${closetLines(req.items, req.lastWorn)}`,

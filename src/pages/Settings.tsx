@@ -5,6 +5,7 @@ import { CLAUDE_MODELS, listModels, pickFree, PROVIDERS, type ModelInfo } from "
 import type { Provider } from "../lib/types";
 import { deleteItem, exportBackup, importBackup, saveSettings, wipeAll } from "../lib/db";
 import { toast, useStore } from "../lib/hooks";
+import { COLOR_SEASONS } from "../lib/palette";
 import { loadSampleWardrobe } from "../lib/sample";
 import { locateMe, searchPlaces } from "../lib/weather";
 import { reshootMany, tidyPiece } from "../lib/pipeline";
@@ -41,6 +42,23 @@ export default function SettingsPage() {
           <label className="field"><span>temperature</span><Chips options={["c", "f"] as const} value={settings.units} labels={{ c: "°C", f: "°F" }} onChange={(u) => saveSettings({ units: u })} /></label>
           <label className="field"><span>currency symbol</span><input className="input" value={settings.currency} maxLength={4} onChange={(e) => saveSettings({ currency: e.target.value })} /></label>
         </div>
+      </section>
+
+      <section className="section stack">
+        <h2 className="h3">Your colours</h2>
+        <p className="muted small" style={{ margin: 0 }}>From a personal colour analysis. The AI stylist puts your best colours near your face and keeps the rest for trousers, shoes and layering. It's a preference, not a filter: every piece still gets worn.</p>
+        <label className="field"><span>colour season</span>
+          <select className="input" value={settings.colorSeason || ""} onChange={(e) => saveSettings({ colorSeason: e.target.value || undefined })}>
+            <option value="">Not set</option>
+            {COLOR_SEASONS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </label>
+        {(() => { const c = COLOR_SEASONS.find((x) => x.id === settings.colorSeason); return c && (
+          <p className="small" style={{ margin: 0 }}><b>Best:</b> {c.best}. <span className="muted"><b>Away from the face:</b> {c.away}. <b>Metal:</b> {c.metal}.</span></p>
+        ); })()}
+        <label className="field"><span>anything else from your analysis (optional)</span>
+          <textarea className="input" rows={2} placeholder="e.g. cool/pink undertone, silver jewellery, matte skin" defaultValue={settings.colorNotes || ""} onBlur={(e) => saveSettings({ colorNotes: e.target.value.trim() || undefined })} />
+        </label>
       </section>
 
       <DriveSettings />
