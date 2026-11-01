@@ -4,7 +4,7 @@ import { Chips, ItemImg, Modal, Scale, Spinner, label } from "../components/ui";
 import { canSearchWeb, hasAI, searchQueryFor, type ProductMatch } from "../lib/ai";
 import { colorName, extractColors } from "../lib/colors";
 import { deleteItem, getImageBlob, putImage, saveDay, saveItem } from "../lib/db";
-import { go, money, todayKey, toast, useNumbers, useStore, useWear } from "../lib/hooks";
+import { go, money, todayKey, toast, pieceNo, useNumbers, useStore, useWear } from "../lib/hooks";
 import { isImageUrl, prepareImage } from "../lib/image";
 import { readPage, searchLinks } from "../lib/web";
 import { aiRetag, applyProductImage, findCleanPhoto, recut, reshootPiece, rotatePiece, tidyPiece } from "../lib/pipeline";
@@ -72,7 +72,7 @@ export default function ItemPage({ id }: { id?: string }) {
             <ItemImg item={stored} />
             {busy && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--paper) 60%, transparent)" }}><div className="row"><Spinner /> <span>{busy}</span></div></div>}
           </div>
-          <p className="hand lg" style={{ width: "fit-content", margin: "12px 8px 0 auto", transform: "rotate(-3deg)" }}>{nums[draft.id]} {label(draft)}</p>
+          <p className="hand lg" style={{ width: "fit-content", margin: "12px 8px 0 auto", transform: "rotate(-3deg)" }}>{pieceNo(nums[draft.id])} {label(draft)}</p>
           <div className="row" style={{ justifyContent: "center", marginTop: 12 }}>
             <button className="btn sm" disabled={!!busy || (!stored.imageId && !stored.originalImageId)} onClick={() => run("Cutting out…", async () => { await recut(stored, (m) => setBusy(m)); toast("Background removed"); })}><Scissors size={14} /> cut out</button>
             <button className="btn sm" disabled={!!busy} onClick={() => {

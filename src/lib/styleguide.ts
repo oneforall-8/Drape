@@ -58,3 +58,15 @@ ROTATION
 
 REASONS
 - For each look give 2–3 short reasons (under 14 words each) that explain why it works: the colour story, the layering, the weather, the occasion. Specific, never generic. No emoji.`;
+
+// Extra rules for the "to buy" page: what's worth adding to this wardrobe next.
+export const SHOPPING_GUIDE = `SHOPPING — suggest what's worth buying next
+- Look for real gaps first: a missing category or type (no light jacket, no smart shoes, no plain knit), a missing level of formality, or nothing for the season ahead.
+- Every suggestion must work with at least three pieces they already own. Name those pieces (by id) in pairsWith.
+- Prefer versatile basics and quiet pieces that multiply outfits over statement pieces.
+- Don't suggest something they already have in the same type and colour.
+- Use their personal colours if given: best colours for tops, knits, shirts and jackets. Weaker colours are fine for trousers and shoes.
+- Keep it realistic for Uniqlo, Zara and H&M: things those shops actually sell, described the way the shops name them.
+- "search" is a short shop search query, 2–5 words, no brand names, e.g. "navy merino crew neck" or "black leather derby shoes".
+- "why" is one or two short sentences: the gap it fills and what it goes with. No emoji.
+- Order from most to least useful.`;

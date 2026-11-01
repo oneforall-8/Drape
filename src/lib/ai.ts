@@ -12,7 +12,7 @@ import type { BetaContentBlock, BetaMessageParam, BetaToolUnion } from "@anthrop
 import { getState } from "./db";
 import { blobToBase64 } from "./image";
 import { colorName } from "./colors";
-import { STYLE_GUIDE } from "./styleguide";
+import { SHOPPING_GUIDE, STYLE_GUIDE } from "./styleguide";
 import { CATEGORIES, OCCASIONS, PATTERNS, SEASONS, type Item, type Occasion, type Provider, type Season } from "./types";
 import { readPage } from "./web";
 
@@ -608,6 +608,96 @@ export async function styleLooks(req: StyleRequest): Promise<StyledLook[]> {
       name: String(l.name || "").slice(0, 40),
       itemIds: l.itemIds.map(String),
       reasons: (Array.isArray(l.reasons) ? l.reasons : []).map(String).filter(Boolean).slice(0, 3),
+    }));
+}
+
+// =====================================================================
+// "To buy": what's worth adding to the wardrobe next
+// =====================================================================
+export interface BuyIdea { name: string; category: Item["category"]; subcategory: string; colors: string[]; search: string; why: string; pairsWith: string[] }
+
+const BUY_FIELDS = { name: "STRING", category: "STRING", subcategory: "STRING", search: "STRING", why: "STRING" } as const;
+const GEMINI_BUY_SCHEMA = {
+  type: "OBJECT",
+  required: ["ideas"],
+  properties: {
+    ideas: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        required: ["name", "category", "subcategory", "colors", "search", "why", "pairsWith"],
+        propertyOrdering: ["name", "category", "subcategory", "colors", "search", "why", "pairsWith"],
+        properties: {
+          ...Object.fromEntries(Object.entries(BUY_FIELDS).map(([k, t]) => [k, { type: t }])),
+          category: { type: "STRING", enum: [...CATEGORIES] },
+          colors: { type: "ARRAY", items: { type: "STRING" } },
+          pairsWith: { type: "ARRAY", items: { type: "STRING" } },
+        },
+      },
+    },
+  },
+};
+const BUY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["ideas"],
+  properties: {
+    ideas: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "category", "subcategory", "colors", "search", "why", "pairsWith"],
+        properties: {
+          name: { type: "string" }, category: { type: "string", enum: [...CATEGORIES] }, subcategory: { type: "string" },
+          colors: { type: "array", items: { type: "string" } }, search: { type: "string" }, why: { type: "string" },
+          pairsWith: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+  },
+};
+
+/** Asks the AI stylist which pieces would add the most to this wardrobe. */
+export async function shoppingIdeas(req: { items: Item[]; palette?: string; season: Season; count?: number }): Promise<BuyIdea[]> {
+  const n = req.count ?? 8;
+  const lines = [
+    `Suggest ${n} pieces worth buying next. Season now: ${req.season}.`,
+    req.palette ? `Personal colours (a preference, not a filter):\n${req.palette}` : "",
+    `\nWardrobe (id | name | category | type | colours | pattern | material | formality 1-5 | warmth 1-5 | occasions | seasons | last worn):\n${closetLines(req.items)}`,
+    `\nFor each idea: a shop-style name, category (${CATEGORIES.join("/")}), type, 1-2 colours as hex, a short shop search query, why, and pairsWith (ids of owned pieces it goes with).`,
+  ].filter(Boolean).join("\n");
+  const system = `${STYLE_GUIDE}\n\n${SHOPPING_GUIDE}`;
+  const p = provider();
+  const viaOpenAI = () => oaiChat([
+    { role: "system", content: `${system}\n\nReply with ONLY a compact JSON object: {"ideas":[{"name":"","category":"","subcategory":"","colors":["#hex"],"search":"","why":"","pairsWith":["ids"]}]}` },
+    { role: "user", content: lines },
+  ], "text", true, { maxTokens: 8192, lightThinking: true });
+  const ask = async () => {
+    let text: string;
+    if (p === "claude") text = await claudeRun({ system, messages: [{ role: "user", content: lines }], schema: BUY_SCHEMA, effort: "low", maxTokens: 8000 });
+    else if (p === "gemini") {
+      try { text = await geminiJson(system, lines, GEMINI_BUY_SCHEMA); }
+      catch (e) { if (e instanceof AIError && /^AI error \(400\)/.test(e.message)) text = await viaOpenAI(); else throw e; }
+    } else text = await viaOpenAI();
+    return parseJson<{ ideas?: BuyIdea[] } | BuyIdea[]>(text);
+  };
+  const retryable = (e: unknown) => e instanceof AIError && /couldn't be read|ran out of room|empty answer/.test(e.message);
+  let r: { ideas?: BuyIdea[] } | BuyIdea[];
+  try { r = await ask(); } catch (e) { if (!retryable(e)) throw e; r = await ask(); }
+  const list: BuyIdea[] = Array.isArray(r) ? r : Array.isArray(r?.ideas) ? r.ideas : [];
+  const owned = new Set(req.items.map((i) => i.id));
+  const hex = (c: unknown) => (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c.trim()) ? c.trim() : null);
+  return list
+    .filter((x) => x && x.name && x.search)
+    .map((x) => ({
+      name: String(x.name).slice(0, 60),
+      category: oneOf(x.category, CATEGORIES, "top"),
+      subcategory: String(x.subcategory || "").slice(0, 30),
+      colors: (Array.isArray(x.colors) ? x.colors : []).map(hex).filter(Boolean).slice(0, 2) as string[],
+      search: String(x.search).slice(0, 60),
+      why: String(x.why || "").slice(0, 240),
+      pairsWith: (Array.isArray(x.pairsWith) ? x.pairsWith : []).map(String).filter((id) => owned.has(id)).slice(0, 6),
     }));
 }
 

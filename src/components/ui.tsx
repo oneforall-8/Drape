@@ -1,6 +1,6 @@
 import { Check, Heart, Lock, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { hashNum, useItemImage } from "../lib/hooks";
+import { hashNum, pieceNo, useItemImage } from "../lib/hooks";
 import { roleOf } from "../lib/rules";
 import type { Item, LayoutSlot } from "../lib/types";
 
@@ -27,7 +27,7 @@ export function Piece({ item, num, onClick, dim, href, selected }: { item: Item;
         <ItemImg item={item} />
       </div>
       <span className="hand" style={{ alignSelf: side ? "flex-end" : "flex-start", transform: `rotate(${(hashNum(item.id + "l") - 0.5) * 6}deg)` }}>
-        {num ? `${num} ` : ""}{label(item)}
+        {num ? `${pieceNo(num)} ` : ""}{label(item)}
       </span>
       {item.favorite && <Heart className="heart" size={15} fill="currentColor" />}
       {selected !== undefined && <span className="pick">{selected && <Check size={14} />}</span>}
@@ -132,7 +132,7 @@ export function OutfitBoard({
             <ItemImg item={it} />
             {labels && (
               <span className="hand" style={{ position: "absolute", right: -6, bottom: -6, fontSize: 17, transform: `rotate(${-s.r}deg)` }}>
-                {nums?.[it.id] ? `${parseInt(nums[it.id])} ` : ""}{label(it)}
+                {nums?.[it.id] ? `${pieceNo(nums[it.id])} ` : ""}{label(it)}
               </span>
             )}
             {locked?.includes(s.itemId) && <span className="lock"><Lock size={12} /></span>}

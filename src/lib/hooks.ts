@@ -41,6 +41,9 @@ export function useWear() {
 }
 
 /** Catalogue numbers like "014", in order of when pieces were added. */
+/** A piece's catalogue number for labels: "026" → "#26" (so "#26 sneakers" doesn't read as 26 pairs). */
+export const pieceNo = (n?: string) => (n ? `#${parseInt(n, 10)}` : "");
+
 export function useNumbers() {
   const { items } = useStore();
   return useMemo(() => {

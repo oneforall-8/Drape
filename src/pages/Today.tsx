@@ -4,7 +4,7 @@ import { Hero } from "../components/Hero";
 import { OutfitBoard, Spinner, label } from "../components/ui";
 import { hasAI, lastAIReply, styleLooks, type StyledLook } from "../lib/ai";
 import { saveDay, saveOutfit, uid } from "../lib/db";
-import { go, todayKey, toast, useNumbers, useStore, useWear, useWeather } from "../lib/hooks";
+import { go, pieceNo, todayKey, toast, useNumbers, useStore, useWear, useWeather } from "../lib/hooks";
 import { paletteText } from "../lib/palette";
 import { lookProblems, suggest, seasonFor, type Suggestion } from "../lib/rules";
 import type { Item } from "../lib/types";
@@ -156,7 +156,7 @@ export default function Today() {
 
   return (
     <div className="page">
-      <Hero pieces={ring.map((it) => ({ key: it.id, item: it, href: `#/item/${it.id}`, label: `${nums[it.id] ? parseInt(nums[it.id]) + " " : ""}${label(it)}` }))}>
+      <Hero pieces={ring.map((it) => ({ key: it.id, item: it, href: `#/item/${it.id}`, label: `${nums[it.id] ? pieceNo(nums[it.id]) + " " : ""}${label(it)}` }))}>
         <h1 className="display">{greeting()}</h1>
         <p className="lede">
           {wx && loc ? <>{fmtTemp(wx.temp, settings.units)} and {wxd!.label.toLowerCase()} in {loc.name.split(",")[0]}{isWet(wx.code, wx.rainChance) ? " — take a layer for the rain." : "."} </> : <><a href="#/settings">Add your city</a> for weather-smart outfits. </>}

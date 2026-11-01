@@ -1,4 +1,4 @@
-import { Plus, Settings as Gear, Sparkles } from "lucide-react";
+import { Plus, Settings as Gear, ShoppingBag, Sparkles } from "lucide-react";
 import { useEffect } from "react";
 import { SyncBadge } from "./components/SyncBadge";
 import { load, requestPersistence } from "./lib/db";
@@ -13,6 +13,7 @@ import Looks from "./pages/Looks";
 import Plan from "./pages/Plan";
 import SettingsPage from "./pages/Settings";
 import Stylist from "./pages/Stylist";
+import ToBuy from "./pages/ToBuy";
 import Today from "./pages/Today";
 
 const NAV = [
@@ -21,6 +22,7 @@ const NAV = [
   { to: "/looks", label: "looks" },
   { to: "/plan", label: "plan" },
   { to: "/stylist", label: "stylist" },
+  { to: "/to-buy", label: "to buy" },
   { to: "/insights", label: "insights" },
   { to: "/settings", label: "settings" },
 ];
@@ -54,6 +56,7 @@ export default function App() {
       case "look": page = <Builder key={parts[1] + params.toString()} id={parts[1]} params={params} />; break;
       case "plan": page = <Plan />; break;
       case "stylist": page = <Stylist />; break;
+      case "to-buy": page = <ToBuy />; break;
       case "insights": page = <Insights />; break;
       case "settings": page = <SettingsPage />; break;
       default: page = <Today />;
@@ -72,6 +75,7 @@ export default function App() {
         <div className="top-actions mobile-only">
           <SyncBadge />
           <a className="iconbtn" href="#/stylist" aria-label="Stylist"><Sparkles size={20} strokeWidth={1.5} /></a>
+          <a className="iconbtn" href="#/to-buy" aria-label="To buy"><ShoppingBag size={20} strokeWidth={1.5} /></a>
           <a className="iconbtn" href="#/insights" aria-label="Insights" style={{ fontFamily: "var(--hand)", fontSize: 20 }}>stats</a>
           <a className="iconbtn" href="#/settings" aria-label="Settings"><Gear size={20} strokeWidth={1.5} /></a>
         </div>

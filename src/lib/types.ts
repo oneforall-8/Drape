@@ -120,6 +120,8 @@ export interface Settings {
   aiLooks?: boolean; // let the AI stylist pick today's looks (on unless turned off)
   colorSeason?: string; // personal colour season id (see palette.ts)
   colorNotes?: string; // anything else from their colour analysis
+  shopRegion?: "uk" | "in"; // which country's shop sites the to-buy links open
+  shopFor?: "men" | "women"; // which section of the shops to search
   location?: { name: string; lat: number; lon: number };
   units: "c" | "f";
   currency: string;

@@ -377,3 +377,14 @@ main { overflow-x: clip; }
   padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
 }
 @media (min-width: 900px) { .select-bar { bottom: 0; left: 50%; right: auto; transform: translateX(-50%); width: min(820px, calc(100vw - 96px)); border: 1px solid var(--line); bottom: 24px; } }
+
+/* ---------- To buy ---------- */
+.buy-list { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+.buy-card { border: 1px solid var(--line); padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+.buy-card .hand.lg { font-size: 26px; }
+.buy-pairs { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 2px 0 6px; }
+.buy-pairs a { width: 52px; height: 60px; flex: none; display: grid; place-items: center; }
+.buy-pairs img { max-width: 100%; max-height: 100%; object-fit: contain; mix-blend-mode: var(--img-blend); }
+.buy-pairs .ph { font-size: 12px; }
+.buy-thumb { width: 72px; height: 84px; flex: none; display: grid; place-items: center; }
+.buy-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; mix-blend-mode: var(--img-blend); }
