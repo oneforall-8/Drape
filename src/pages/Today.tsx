@@ -102,7 +102,7 @@ export default function Today() {
         if (good.length) store.set(key, merged);
         else setAiNote("The AI's looks didn't pass the style checks, so these are quick picks.");
       })
-      .catch((e) => { if (live) setAiNote(`${e instanceof Error ? e.message : String(e)} Showing quick picks.`); })
+      .catch((e) => { if (live) setAiNote(`AI stylist: ${e instanceof Error ? e.message : String(e)} Showing quick picks — tap new ideas to try again.`); })
       .finally(() => { if (live) setAiBusy(false); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

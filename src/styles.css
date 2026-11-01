@@ -223,9 +223,13 @@ a.hero-slot:hover .hero-img { transform: translateY(-4px) scale(1.04) !important
 
 /* ---------- Outfit board ---------- */
 /* isolation keeps each look's pieces in their own layer, so they never draw over the menu bar or pop-ups */
-.board { position: relative; isolation: isolate; width: 100%; aspect-ratio: 4 / 5; touch-action: none; user-select: none; }
+.board { position: relative; isolation: isolate; width: 100%; aspect-ratio: 4 / 5; touch-action: none; user-select: none; container-type: inline-size; }
+/* Height caps (in % of the look's width; a look is 4:5), so long thin pieces like belts or scarves stay in proportion */
+.board .slot img { width: 100%; height: auto; max-height: 57cqw; object-fit: contain; display: block; mix-blend-mode: var(--img-blend); pointer-events: none; }
+.board .slot.r-shoes img, .board .slot.r-bag img { max-height: 30cqw; }
+.board .slot.r-accessory img { max-height: 22cqw; }
+.board .slot.r-bottom img, .board .slot.r-dress img { max-height: 72cqw; }
 .board .slot { position: absolute; transform-origin: center; }
-.board .slot img { width: 100%; height: auto; mix-blend-mode: var(--img-blend); pointer-events: none; filter: drop-shadow(0 6px 10px rgba(0,0,0,.08)); }
 .board.edit .slot { cursor: grab; }
 .board.edit .slot.sel { outline: 1px dashed var(--muted); outline-offset: 4px; }
 .board .slot .lock { position: absolute; top: -6px; right: -6px; background: var(--ink); color: var(--paper); border-radius: 50%; width: 22px; height: 22px; display: grid; place-items: center; }
@@ -236,7 +240,8 @@ a.hero-slot:hover .hero-img { transform: translateY(-4px) scale(1.04) !important
 @media (min-width: 640px) { .looks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1000px) { .looks { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (min-width: 1000px) { .looks.four { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.look { position: relative; }
+/* skip drawing looks that are off-screen: keeps scrolling smooth with many large photos */
+.look { position: relative; content-visibility: auto; contain-intrinsic-size: auto 720px; }
 .look .hand.tag { position: absolute; bottom: 10px; right: 6px; font-size: 26px; transform: rotate(-4deg); }
 .look p { margin: 6px 0; font-size: 15px; color: var(--ink-2); }
 

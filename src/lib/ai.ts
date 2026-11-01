@@ -82,7 +82,7 @@ function modelsFor(p: Provider) {
 type OAIContent = string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[];
 interface OAIMessage { role: "system" | "user" | "assistant"; content: OAIContent }
 
-async function oaiChat(messages: OAIMessage[], kind: "vision" | "text", json = true): Promise<string> {
+async function oaiChat(messages: OAIMessage[], kind: "vision" | "text", json = true, opts: { maxTokens?: number; lightThinking?: boolean } = {}): Promise<string> {
   const p = provider();
   const s = getState().settings;
   const base = (p === "custom" ? s.customBase : PROVIDERS[p].base)?.replace(/\/$/, "");
@@ -94,13 +94,16 @@ async function oaiChat(messages: OAIMessage[], kind: "vision" | "text", json = t
   if (key) headers.Authorization = `Bearer ${key}`;
   if (p === "openrouter") { headers["HTTP-Referer"] = location.origin; headers["X-Title"] = "Drape"; }
 
-  const send = async (withFormat: boolean) => {
+  // Gemini "thinks" before answering, and that thinking counts against max_tokens. Asking for light
+  // thinking leaves room for the answer itself.
+  const thinking = opts.lightThinking && p === "gemini" ? { reasoning_effort: "low" } : {};
+  const send = async (withExtras: boolean) => {
     let r: Response;
     try {
       r = await fetch(`${base}/chat/completions`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: 4000, ...(json && withFormat ? { response_format: { type: "json_object" } } : {}) }),
+        body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: opts.maxTokens ?? 4000, ...(withExtras ? thinking : {}), ...(json && withExtras ? { response_format: { type: "json_object" } } : {}) }),
       });
     } catch {
       throw new AIError(p === "custom" ? "Couldn't reach your AI server. If it's Ollama, start it with OLLAMA_ORIGINS=* so websites can connect." : "Couldn't reach the AI service. Check your connection.");
@@ -116,6 +119,9 @@ async function oaiChat(messages: OAIMessage[], kind: "vision" | "text", json = t
   const msg = data?.choices?.[0]?.message;
   let text: string = typeof msg?.content === "string" ? msg.content : Array.isArray(msg?.content) ? msg.content.map((c: { text?: string }) => c.text || "").join("") : "";
   text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  const finish = data?.choices?.[0]?.finish_reason;
+  try { sessionStorage.setItem("drape.lastAI", JSON.stringify({ model, finish, text: text.slice(0, 4000), usage: data?.usage })); } catch { /* ignore */ }
+  if (finish === "length") throw new AIError("The AI ran out of room before finishing its answer.");
   if (!text) throw new AIError("The model returned an empty answer. Try again, or pick another model in Settings.");
   return text;
 }
@@ -501,17 +507,21 @@ export async function styleLooks(req: StyleRequest): Promise<StyledLook[]> {
     `\nUse only ids from the wardrobe. Give each look a short evocative name (2-4 words).`,
   ].filter(Boolean).join("\n");
 
-  let text: string;
-  if (provider() === "claude") {
-    text = await claudeRun({ system: STYLE_GUIDE, messages: [{ role: "user", content: lines }], schema: LOOKS_SCHEMA, effort: "low", maxTokens: 6000 });
-  } else {
-    text = await oaiChat([
-      { role: "system", content: `${STYLE_GUIDE}\n\nReply with ONLY a JSON object: {"looks":[{"name":"","itemIds":["exact ids"],"reasons":["",""]}]}` },
-      { role: "user", content: lines },
-    ], "text");
-  }
-  const r = parseJson<{ looks?: StyledLook[] }>(text);
-  return (Array.isArray(r.looks) ? r.looks : [])
+  const ask = async () => {
+    const text = provider() === "claude"
+      ? await claudeRun({ system: STYLE_GUIDE, messages: [{ role: "user", content: lines }], schema: LOOKS_SCHEMA, effort: "low", maxTokens: 6000 })
+      : await oaiChat([
+        { role: "system", content: `${STYLE_GUIDE}\n\nReply with ONLY a compact JSON object, no markdown, no commentary: {"looks":[{"name":"","itemIds":["exact ids"],"reasons":["",""]}]}` },
+        { role: "user", content: lines },
+      ], "text", true, { maxTokens: 8192, lightThinking: true });
+    return parseJson<{ looks?: StyledLook[] }>(text);
+  };
+  let r: { looks?: StyledLook[] };
+  // Free models occasionally return a cut-off or garbled answer; one retry usually fixes it.
+  const retryable = (e: unknown) => e instanceof AIError && /couldn't be read|ran out of room|empty answer/.test(e.message);
+  try { r = await ask(); } catch (e) { if (!retryable(e)) throw e; r = await ask(); }
+  const list: StyledLook[] = Array.isArray(r) ? r : Array.isArray(r?.looks) ? r.looks : [];
+  return list
     .filter((l) => l && Array.isArray(l.itemIds))
     .map((l) => ({
       name: String(l.name || "").slice(0, 40),

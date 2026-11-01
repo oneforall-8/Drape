@@ -1,4 +1,5 @@
 import { openDB, type IDBPDatabase } from "idb";
+import { prepareImage } from "./image";
 import { DEFAULT_SETTINGS, type DayEntry, type Item, type Outfit, type Settings } from "./types";
 
 /**
@@ -220,14 +221,34 @@ export async function getImageBlob(id: string): Promise<Blob | undefined> {
   const d = await db();
   return d.get("images", id);
 }
-export async function imageUrl(id: string): Promise<string | undefined> {
+// Photos are shown from a smaller copy (the stored original stays untouched for re-shoots and sync).
+// Full-size AI photos are 1–2 MB each; drawing a dozen of them at full size makes scrolling stutter on phones.
+const DISPLAY_MAX = 900;
+const urlPending = new Map<string, Promise<string | undefined>>();
+let shrinkQueue: Promise<unknown> = Promise.resolve();
+export function imageUrl(id: string): Promise<string | undefined> {
   const hit = urlCache.get(id);
-  if (hit) return hit;
-  const blob = await getImageBlob(id);
-  if (!blob) return undefined;
-  const url = URL.createObjectURL(blob);
-  urlCache.set(id, url);
-  return url;
+  if (hit) return Promise.resolve(hit);
+  const pending = urlPending.get(id);
+  if (pending) return pending;
+  const job = (async () => {
+    const blob = await getImageBlob(id);
+    if (!blob) return undefined;
+    let shown: Blob = blob;
+    if (blob.size > 250_000) {
+      // One photo at a time, so the page stays responsive while they're shrunk.
+      const step = shrinkQueue.then(() => prepareImage(blob, DISPLAY_MAX, true)).catch(() => blob);
+      shrinkQueue = step;
+      shown = await step;
+    }
+    const url = URL.createObjectURL(shown);
+    urlCache.set(id, url);
+    return url;
+  })();
+  urlPending.set(id, job);
+  const clear = () => { urlPending.delete(id); };
+  job.then(clear, clear);
+  return job;
 }
 
 // ---------- Backup ----------

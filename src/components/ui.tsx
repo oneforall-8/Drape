@@ -124,7 +124,7 @@ export function OutfitBoard({
         return (
           <div
             key={s.itemId}
-            className={"slot" + (selected === s.itemId ? " sel" : "")}
+            className={"slot r-" + roleOf(it) + (selected === s.itemId ? " sel" : "")}
             style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%`, width: `${s.w * 100}%`, zIndex: Math.round(s.z * 10), transform: `translate(-50%, -50%) rotate(${s.r}deg)` }}
             onPointerDown={(e) => onDown(e, s)}
             title={it.name}
