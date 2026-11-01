@@ -210,6 +210,34 @@ export function scoreCombo(items: Item[], ctx?: StyleContext): { score: number; 
   return { score, reasons };
 }
 
+/**
+ * Checks a finished look (for example one an AI put together) against the basics.
+ * Returns what's wrong, or an empty list when the look is fine to show.
+ */
+export function lookProblems(items: Item[], ctx: { temp?: number; locked?: string[] } = {}): string[] {
+  const p: string[] = [];
+  const count = (c: string) => items.filter((i) => i.category === c).length;
+  const tops = items.filter((i) => i.category === "top");
+  const dress = count("dress");
+  if (new Set(items.map((i) => i.id)).size !== items.length) p.push("a piece is used twice");
+  if (items.some((i) => i.status !== "owned")) p.push("uses a piece that isn't owned");
+  if (dress > 1) p.push("more than one dress");
+  if (dress === 0 && (tops.length === 0 || count("bottom") !== 1)) p.push("needs one top and one bottom");
+  if (dress === 1 && count("bottom") > 0) p.push("dress with a bottom");
+  if (count("shoes") !== 1) p.push("needs exactly one pair of shoes");
+  if (count("outerwear") > 1) p.push("more than one jacket");
+  if (tops.length > 2 || (tops.length === 2 && !(ctx.temp !== undefined && ctx.temp < 10))) p.push("two tops when it isn't cold");
+  if (tops.length === 2 && tops.every(isKnit)) p.push("knit over knit");
+  const outer = items.find((i) => i.category === "outerwear");
+  if (outer && isKnit(outer) && tops.some(isKnit)) p.push("knit over knit");
+  const accs = items.filter((i) => i.category === "accessory");
+  for (const k of ["watch", "belt", "hat"] as AccKind[]) if (accs.filter((a) => accKind(a) === k).length > 1) p.push(`two of a kind: ${k}`);
+  if (accs.length > 3) p.push("too many accessories");
+  const missing = (ctx.locked || []).filter((id) => !items.some((i) => i.id === id));
+  if (missing.length) p.push("left out a locked piece");
+  return p;
+}
+
 /** Generate a few distinct, good outfits. */
 export function suggest(all: Item[], ctx: StyleContext, count = 4): Suggestion[] {
   const pools = buildPools(all, ctx);
@@ -242,7 +270,7 @@ export function suggest(all: Item[], ctx: StyleContext, count = 4): Suggestion[]
       if (!top || !bottom) continue;
       parts.push(top, bottom);
       const cold = temp !== undefined && temp < 8;
-      if (roleOf(top.item) === "top" && (lockedMid || (cold && r() < 0.6))) { const m = lockOr("mid"); if (m) parts.push(m); }
+      if (roleOf(top.item) === "top" && !isKnit(top.item) && (lockedMid || (cold && r() < 0.6))) { const m = lockOr("mid"); if (m) parts.push(m); }
     }
     const needOuter = lockedRoles.has("outer") || (temp !== undefined ? temp < 15 || !!ctx.wet || (temp < 19 && r() < 0.45) : r() < 0.25);
     if (needOuter) {

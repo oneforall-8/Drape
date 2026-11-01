@@ -117,6 +117,7 @@ export interface Settings {
   autoRemoveBg: boolean;
   autoTidy?: boolean; // straighten, soften creases and even out colour (on-device)
   autoTag: boolean;
+  aiLooks?: boolean; // let the AI stylist pick today's looks (on unless turned off)
   location?: { name: string; lat: number; lon: number };
   units: "c" | "f";
   currency: string;

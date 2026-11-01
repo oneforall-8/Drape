@@ -205,6 +205,7 @@ function AISettings() {
         </>
       )}
       <Toggle on={settings.autoTag} onChange={(v) => saveSettings({ autoTag: v })} label="Tag new photos with AI" hint="Fills in name, type, colours, season, formality and warmth. Uses one request per photo." />
+      <Toggle on={settings.aiLooks !== false} onChange={(v) => saveSettings({ aiLooks: v })} label="Style today's looks with AI" hint="The AI stylist picks today's looks from your closet using a built-in style guide. Uses one request each time you open Today, tap new ideas or shuffle. Quick picks show straight away and stay if the AI is unavailable." />
     </section>
   );
 }

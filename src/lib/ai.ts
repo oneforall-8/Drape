@@ -11,7 +11,9 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { BetaContentBlock, BetaMessageParam, BetaToolUnion } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { getState } from "./db";
 import { blobToBase64 } from "./image";
-import { CATEGORIES, OCCASIONS, PATTERNS, SEASONS, type Item, type Provider } from "./types";
+import { colorName } from "./colors";
+import { STYLE_GUIDE } from "./styleguide";
+import { CATEGORIES, OCCASIONS, PATTERNS, SEASONS, type Item, type Occasion, type Provider, type Season } from "./types";
 import { readPage } from "./web";
 
 export class AIError extends Error {}
@@ -439,6 +441,83 @@ ${context}`;
   }
   const r = parseJson<StylistReply>(text);
   return { message: String(r.message || ""), outfits: Array.isArray(r.outfits) ? r.outfits : [] };
+}
+
+// =====================================================================
+// AI styling for "today's looks"
+// =====================================================================
+export interface StyledLook { name: string; itemIds: string[]; reasons: string[] }
+
+export interface StyleRequest {
+  items: Item[]; // owned pieces
+  temp?: number;
+  wet?: boolean;
+  occasion: Occasion;
+  season: Season;
+  lastWorn?: Record<string, number>; // id -> days since worn
+  count: number;
+  ideas?: string[][]; // looks from the rule engine, offered as a starting point
+  locked?: string[]; // pieces every look must include
+  avoid?: string[][]; // looks already on screen — come up with different ones
+}
+
+const LOOKS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["looks"],
+  properties: {
+    looks: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "itemIds", "reasons"],
+        properties: { name: { type: "string" }, itemIds: { type: "array", items: { type: "string" } }, reasons: { type: "array", items: { type: "string" } } },
+      },
+    },
+  },
+};
+
+/** One line per piece, with colour names so the model doesn't have to read hex codes. */
+function closetLines(items: Item[], lastWorn: Record<string, number> = {}) {
+  return items.map((i) => [
+    i.id, i.name, i.category, i.subcategory || "", i.colors.slice(0, 2).map(colorName).join("/"), i.pattern, i.material || "",
+    `formality ${i.formality}`, `warmth ${i.warmth}`, i.occasions.join("/") || "casual", i.seasons.join("/") || "all seasons",
+    lastWorn[i.id] !== undefined ? `worn ${lastWorn[i.id]}d ago` : "",
+  ].join(" | ")).join("\n");
+}
+
+/** Asks the AI stylist to put together today's looks from the user's wardrobe, following the style guide. */
+export async function styleLooks(req: StyleRequest): Promise<StyledLook[]> {
+  const name = (id: string) => req.items.find((i) => i.id === id)?.name || id;
+  const lines = [
+    `Occasion: ${req.occasion}. Season: ${req.season}.`,
+    req.temp !== undefined ? `Weather: about ${Math.round(req.temp)}°C${req.wet ? ", wet" : ""}.` : "Weather: unknown — dress for a mild day.",
+    `Make ${req.count} different look${req.count > 1 ? "s" : ""}.`,
+    req.locked?.length ? `Every look must include: ${req.locked.map((id) => `${id} (${name(id)})`).join(", ")}.` : "",
+    req.avoid?.length ? `Already shown — make something different from these:\n${req.avoid.map((l) => "- " + l.map(name).join(" + ")).join("\n")}` : "",
+    req.ideas?.length ? `Starting ideas from a simple rule engine. Use, improve or ignore them:\n${req.ideas.map((l) => "- " + l.map((id) => `${id} ${name(id)}`).join(" + ")).join("\n")}` : "",
+    `\nWardrobe (id | name | category | type | colours | pattern | material | formality 1-5 | warmth 1-5 | occasions | seasons | last worn):\n${closetLines(req.items, req.lastWorn)}`,
+    `\nUse only ids from the wardrobe. Give each look a short evocative name (2-4 words).`,
+  ].filter(Boolean).join("\n");
+
+  let text: string;
+  if (provider() === "claude") {
+    text = await claudeRun({ system: STYLE_GUIDE, messages: [{ role: "user", content: lines }], schema: LOOKS_SCHEMA, effort: "low", maxTokens: 6000 });
+  } else {
+    text = await oaiChat([
+      { role: "system", content: `${STYLE_GUIDE}\n\nReply with ONLY a JSON object: {"looks":[{"name":"","itemIds":["exact ids"],"reasons":["",""]}]}` },
+      { role: "user", content: lines },
+    ], "text");
+  }
+  const r = parseJson<{ looks?: StyledLook[] }>(text);
+  return (Array.isArray(r.looks) ? r.looks : [])
+    .filter((l) => l && Array.isArray(l.itemIds))
+    .map((l) => ({
+      name: String(l.name || "").slice(0, 40),
+      itemIds: l.itemIds.map(String),
+      reasons: (Array.isArray(l.reasons) ? l.reasons : []).map(String).filter(Boolean).slice(0, 3),
+    }));
 }
 
 // =====================================================================
